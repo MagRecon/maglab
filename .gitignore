@@ -12,7 +12,4 @@ test/*(deprecated)*
 test/*.npy
 !test/dataset/*
 
-examples/*
-!examples/main.py
-
 maglab.egg-info/
