@@ -1,0 +1,7 @@
+numpy
+matplotlib
+scikit_image
+scipy
+setuptools
+pyevtk
+tqdm
