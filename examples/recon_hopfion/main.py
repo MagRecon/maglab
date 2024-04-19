@@ -1,7 +1,13 @@
 """
     This is a demo to reconstruct a hopfion ring using a series magnetic phases.
-    The tilt angles are from -30 degree to +30 degree.
-    Firstly, you need to download the magnetization file from https://github.com/BoyaoLyu/HopfionRing, and copy it to this path.
+    Firstly, you need to download the magnetization file from https://github.com/MagRecon/HopfionRing, and copy it to this path.
+    
+    The tilt angles are from -30 degree to +30 degree, which is a critical situation.
+    (This demo requires 12000 epoches)
+    
+    We are utilizing a relatively small batch size (4) for this reconstruction, which will require more total batches.
+    
+    For a simpler reproduction, please set the max_tilt_angle to 60 and use a larger batch size (such as 12 or 20).
 """
 import torch
 import torch.nn as nn

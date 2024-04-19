@@ -9,11 +9,7 @@ __all__ = ['LTEM']
 
 class LTEM(torch.nn.Module):
     """
-    This is a pytorch reimplementation of the Microscope class in Pylorentz.
-    Notes:
-
-    When initializing a Microscope you can set verbose=True to get a printout
-        of the parameters.
+    This is a PyTorch-based reimplementation of the 'Microscope' class from PyLorentz.
 
     Attributes:
         E (float): Accelerating voltage (V). Default 200kV.
@@ -21,7 +17,6 @@ class LTEM(torch.nn.Module):
         C_a (float): 2-fold astigmatism (m). Default 0.
         phi_a (float): 2-fold astigmatism angle (rad). Default 0.
         theta_c (float): Beam coherence (rad). Default 0.6mrad.
-        #Cc (float): Chromatic aberration (nm). Default 5mm.
     """
     def __init__(self, fov, dx=5e-9, E=200e3,
                  C_s=1e-3, C_a=0, phi_a=0, theta_c=6e-4,):
@@ -44,7 +39,7 @@ class LTEM(torch.nn.Module):
         return torch.fft.ifft2(xyk)
     
     def get_lam(self, E):
-        """Calculate electron wave length by accelerating voltage
+        """Calculate the wavelength of an electron using the accelerating voltage.
         Args:
             E (float): Accelerating voltage (V)
 
@@ -61,7 +56,6 @@ class LTEM(torch.nn.Module):
         return lam
     
     def _register_grid(self):
-        #k= 2*torch.pi*torch.fft.fftfreq(self.fov, self.dx)
         k= torch.fft.fftfreq(self.fov, self.dx)
         kx, ky = torch.meshgrid(k, k, indexing='ij')
         self.register_buffer('kx', kx)
@@ -69,17 +63,16 @@ class LTEM(torch.nn.Module):
         self.register_buffer('k2', kx**2+ky**2)
     
     def get_intensity(self, amp, phase, df=0, spread=120e-9):
-        """Get Fresnel image from phase data.
+        """Generates a Fresnel image using given amplitude and phase data.
 
         Args:
-            phase (2D tensor (n,n)): 2D phase data
-            thickness (2D tensor (n,n)): thickness map
-            eta_0 (float):  absorption coefficient of the material
-            df (float): defocus(meter)
-            spread (float): defocus spread 
+            amp(torch.Tensor): A 2d tensor of size (n, n) containing amplitude values.
+            phase(torch.Tensor): A 2d tensor of size (n, n) containing phase values.
+            df(float): defocus(m).
+            spread(float): defocus spread(m).
 
         Returns:
-            img (2D tensor (n,n)): Fresnel image.
+            img(torch.Tensor): A 2D tensor of size (n, n) representing the Fresnel image.
         """
         obj_wave = self.get_obj_wave(amp, phase)
         obj_wave_f = torch.fft.fft2(torch.fft.ifftshift(obj_wave, dim=(0,1)))
@@ -89,6 +82,7 @@ class LTEM(torch.nn.Module):
         img = torch.abs(img_wave) ** 2
         return torch.fft.fftshift(img, dim=(0,1))
     
+    #TODO: setAperture
     def setAperture(self, sz):
         pass
     
@@ -110,11 +104,11 @@ class LTEM(torch.nn.Module):
         """Get amplitude of objective wave.
 
         Args:
-            thickness (torch.tensor): 2D tensor of thickness information
+            thickness (torch.Tensor): A 2d tensor of size (n, n) containing thickness values.
             eta_0 (float): absorption constant of the sample
 
         Returns:
-            amp(torch.tensor): 2D amplitude info
+            amp(torch.Tensor): A 2d tensor of size (n, n) containing amplitude values.
         """
         amp = torch.exp(-1*thickness/eta_0)
         if filter:
@@ -133,8 +127,6 @@ class LTEM(torch.nn.Module):
     def get_phase_transfer_function_f(self, df):
         k2 = self.k2
         k4 = k2 ** 2  
-        #phi_a_0 = torch.arctan2(self.ky, self.kx)
-        #c1 = torch.pi * self.lam * (df + self.C_a * torch.cos(2*(phi_a_0-self.phi_a))) * k2
         c1 = torch.pi * self.lam * (df + self.C_a * np.cos(2*self.phi_a)) * k2
         c2 = torch.pi/2 * self.C_s * self.lam**3 * k4
         chi_f = -1*c1 + c2

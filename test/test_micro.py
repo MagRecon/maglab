@@ -23,7 +23,7 @@ class TestMicro(unittest.TestCase):
         self.micro.add_zeeman((0,0,1e5))
         
     def test_init_m0(self):
-        self.micro.init_m0(0.)
+        self.micro.init_m0((0,0,1.))
         self.micro.init_m0(torch.zeros((2,*self.micro.shape)))
 
     def test_set_requires_grad(self):
