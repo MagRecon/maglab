@@ -82,7 +82,7 @@ class PhaseMapper(nn.Module):
         k2 = torch.pow(KX,2) + torch.pow(KY,2)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            ker_x, ker_y = -1j*KX/k2,-1j*KY/k2
+            ker_x, ker_y = KX/k2,KY/k2
         ker_x[0,0] = 0.
         ker_y[0,0] = 0.
             
@@ -111,10 +111,7 @@ class PhaseMapper(nn.Module):
             
         u, v = self.cellsize * torch.fft.ifftshift(u,dim=(0,1)), self.cellsize * torch.fft.ifftshift(v,dim=(0,1))
         fft_u, fft_v = torch.fft.rfft2(u), torch.fft.rfft2(v)
-        # phi_k = -1 * (fft_u*self.ker_y - fft_v*self.ker_x)
-        # phi = torch.fft.irfft2(phi_k)
-        # return c_m * mu_0 * Ms * torch.fft.fftshift(phi, dim=(0,1))
-        A_k = -1 * mu_0 * Ms * (fft_u*self.ker_y - fft_v*self.ker_x)
-        phi_k = -1 * c_m * A_k
-        phi = torch.fft.irfft2(phi_k)
+        A_k = -1j * mu_0 * Ms * (fft_u*self.ker_y - fft_v*self.ker_x)
+        phi_k = -1 * c_m * A_k #beam along z+ direction
+        phi = -1 * torch.fft.irfft2(phi_k) #beam along z- direction
         return torch.fft.fftshift(phi, dim=(0,1))

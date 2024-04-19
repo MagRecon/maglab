@@ -3,7 +3,7 @@ import torch.nn as nn
 import scipy.constants as const
 import numpy as np
 import numbers
-from .loss import Exch, DMI, Anistropy, Zeeman, DeMagPBC, DeMag, InterfacialDMI
+from .loss import Exch, DMI, Anistropy, Zeeman, DeMag, InterfacialDMI
 from .helper import vector_to_angles
 
 __all__ = ['Micro']

@@ -45,13 +45,13 @@ fov = 128
 fov2 = fov*2
 Ms = 1e5
 phi1 = phase_in_theory(mx,my,nx,ny,nz,dx,dy,dz,fov,fov,Ms)
-phi1 = -1 * phi1
 
 m = np.zeros((3,nx,ny,nz))
 m[0,], m[1,] = mx,my
 phasemapper = PhaseMapper(2*fov, dx, rotation_padding=100).to(device)
 phi2 = phasemapper(m, theta=0., axis=0, Ms=Ms)
 phi2 = phi2.detach().cpu().numpy()[fov//2:-fov//2, fov//2:-fov//2]
+phi2 = -1 * phi2 # we are using beam along z- direction
 show_array([phi1, phi2, phi1-phi2], titles=['theory', 'simu', 'diff'])
 print("mean error:", np.mean(np.abs(phi1-phi2)) / np.mean(np.abs(phi1)))
 plt.savefig("phase.png", dpi=100)
