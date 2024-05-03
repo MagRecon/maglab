@@ -34,5 +34,3 @@ __all__.extend(ltem.__all__)
 
 THIS_DIR = dirname(__file__)
 sys.path.append(THIS_DIR)
-
-print("install on: 2024-04-19 23:29:02.334105")

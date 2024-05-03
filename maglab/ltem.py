@@ -31,12 +31,6 @@ class LTEM(torch.nn.Module):
         self.theta_c = theta_c
         self.aperture = 1.0
         self._register_grid()
-        
-    def _fft_conv(self, x, y):
-        xk = torch.fft.fft2(x)
-        yk = torch.fft.fft2(y)
-        xyk = xk*yk
-        return torch.fft.ifft2(xyk)
     
     def get_lam(self, E):
         """Calculate the wavelength of an electron using the accelerating voltage.
@@ -56,8 +50,9 @@ class LTEM(torch.nn.Module):
         return lam
     
     def _register_grid(self):
-        k= torch.fft.fftfreq(self.fov, self.dx)
-        kx, ky = torch.meshgrid(k, k, indexing='ij')
+        nx, ny = self.fov
+        kx, ky= torch.fft.fftfreq(nx, self.dx), torch.fft.fftfreq(ny, self.dx)
+        kx, ky = torch.meshgrid(kx, ky, indexing='ij')
         self.register_buffer('kx', kx)
         self.register_buffer('ky', ky)
         self.register_buffer('k2', kx**2+ky**2)
@@ -88,15 +83,16 @@ class LTEM(torch.nn.Module):
     
     def get_obj_wave(self, amp, phase, ):
         (nx,ny) = amp.shape
-        if not (nx == self.fov and ny == self.fov):
-            amp = padding_into(amp, (self.fov,self.fov))
+        if not (nx == self.fov[0] and ny == self.fov[1]):
+            amp = padding_into(amp, self.fov)
             
         return amp * torch.exp(1j*phase)
     
     def get_thickness_info(self, micro, angle, axis, padding=True):
         geo = micro.geo
         if padding:
-            geo = padding_into(geo, (self.fov, self.fov, self.fov))
+            nx = self.fov[0]
+            geo = padding_into(geo, (nx,nx,nx))
         proj = projection(geo, angle, axis) * micro.cellsize
         return proj
 

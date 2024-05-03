@@ -20,7 +20,6 @@ pip install -r requirements.txt
 4.Run setup.py:
 
 ```
-python setup.py build
 python setup.py install
 ```
 

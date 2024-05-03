@@ -109,12 +109,7 @@ class Micro(nn.Module):
         self.interactions.append(InterfacialDMI(D,self.cellsize, self.pbc,save_energy))
         
     def add_demag(self, save_energy=False):
-        if self.pbc:
-            demag = DeMagPBC
-        else:
-            demag = DeMag
-            
-        self.interactions.append(demag(*self.shape, self.cellsize, save_energy))
+        self.interactions.append(DeMag(*self.shape, self.cellsize, save_energy))
         
     def add_anis(self, Ku, axis=(0,0,1),save_energy=False):
         self.interactions.append(Anistropy(Ku, self.cellsize, axis,save_energy))        
