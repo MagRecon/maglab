@@ -7,9 +7,10 @@ test/*.txt
 test/*.ipynb*
 test/*.png
 test/*.pth
-test/*(deprecated)*
 
 test/*.npy
-!test/dataset/*
+test/dataset/*
+
+examples/tie/*.png
 
 maglab.egg-info/

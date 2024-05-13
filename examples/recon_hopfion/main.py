@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import maglab
 from maglab.dataset import PhaseMap, PhaseSet, PhaseLoader
 
-from maglab.utils import show_array
+from maglab.utils import show_list
 from maglab.saver import Saver
 
 """
@@ -133,7 +133,7 @@ while batch < total_batches:
         info = 'Epoch:{}  Loss M:{:.3e} Loss Phase:{:.3e}'.format(epoch, loss_m, loss_phi, )
         saver.write(info)
         ms = micro.get_m().detach().cpu().numpy()
-        show_array([ms[i,:,:,nz//2] for i in range(3)],)
+        show_list([ms[i,:,:,nz//2] for i in range(3)],)
         plt.savefig(f"{path_info}/epoch{epoch}.png")
         plt.close()
         

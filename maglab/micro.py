@@ -3,13 +3,23 @@ import torch.nn as nn
 import scipy.constants as const
 import numpy as np
 import numbers
-from .loss import Exch, DMI, Anistropy, Zeeman, DeMag, InterfacialDMI
-from .helper import vector_to_angles
+from .microfields import Exch, DMI, Anistropy, Zeeman, InterfacialDMI
+from .demag import DeMag
+from .helper import Cartesian2Spherical
+import torch.nn.functional as F
 
 __all__ = ['Micro']
 
+
 class Micro(nn.Module):
-    def __init__(self, geo, cellsize, pbc=False):
+    def __init__(self, geo, cellsize, pbc:str=""):
+        """Initiate Micro class.
+
+        Args:
+            geo (torch.Tensor or numpy.ndarray): 3d binary array contains geo infomation.
+            cellsize (float): dx in meter.
+            pbc (str, optional): Periodic boundary condition flag. If pbc in x-dim is required, set pbc="x". Defaults to "".
+        """
         super().__init__()
         self.shape = geo.shape 
         
@@ -18,10 +28,10 @@ class Micro(nn.Module):
         self.geo = nn.Parameter(geo, requires_grad=False)
         
         self.cellsize = cellsize
-        self.pbc = pbc
         self.angles = nn.Parameter(torch.zeros((2,*self.shape)), requires_grad=True)
         self.interactions = nn.ModuleList()
         self.Ms = None
+        self.pbc = pbc
         
     @classmethod    
     def _tensor(cls, x, ):
@@ -82,11 +92,11 @@ class Micro(nn.Module):
         if isinstance(x, tuple):
             m = torch.zeros((3,*self.shape))
             m[0],m[1],m[2] = x[0],x[1],x[2]
-            x = vector_to_angles(m)
+            x = Cartesian2Spherical(m)
         else:
             x = self._tensor(x)
             if x.shape[0] == 3:
-                x = vector_to_angles(x)
+                x = Cartesian2Spherical(x)
         self.angles.data.copy_(x)
     
     def init_m0_random(self, seed=None):
@@ -103,10 +113,10 @@ class Micro(nn.Module):
         self.interactions.append(Exch(A, self.cellsize,  self.pbc,save_energy))
         
     def add_dmi(self, D, save_energy=False):
-        self.interactions.append(DMI(D,self.cellsize, self.pbc,save_energy))
+        self.interactions.append(DMI(D,self.cellsize, self.pbc, save_energy))
         
     def add_interfacial_dmi(self, D, save_energy=False):
-        self.interactions.append(InterfacialDMI(D,self.cellsize, self.pbc,save_energy))
+        self.interactions.append(InterfacialDMI(D,self.cellsize, self.pbc, save_energy))
         
     def add_demag(self, save_energy=False):
         self.interactions.append(DeMag(*self.shape, self.cellsize, save_energy))
@@ -145,7 +155,7 @@ class Micro(nn.Module):
     def loss(self, Ms=None, unit=const.eV):
         loss_m = 0.
         if len(self.interactions) > 0:
-            m = self.get_m()            
+            m = self.get_m()        
             for i in self.interactions:
                 loss_m = loss_m + i(m, self.geo, Ms)
                 

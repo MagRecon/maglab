@@ -2,14 +2,13 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from maglab import PhaseMapper
-from maglab.const import mu_0
-from maglab.utils import show, show_array
+import maglab
+from maglab.utils import show, show_list
 
 import torch
 import warnings
 import unittest
 
-device = torch.device("cuda")
 def F0(x, y):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -36,28 +35,63 @@ def phase_in_theory(mx,my, nx,ny,nz, dx,dy,dz, fov_x,fov_y, Ms):
     phi = phim_uniformly_magnetized_slab(mx, my, X, Y, Lx, Ly, Lz, Ms)
     return phi
 
-class TestMicro(unittest.TestCase):
+class Test(unittest.TestCase):
     def setUp(self):
         theta = 5/3*np.pi
         mx,my=np.cos(theta), np.sin(theta)
-        nx,ny,nz = 32,64,16
-        dx,dy,dz = 1e-9,1e-9,1e-9
-        fov = 128
-        fov2 = fov*2
-        Ms = 1e5
-        phi1 = phase_in_theory(mx,my,nx,ny,nz,dx,dy,dz,fov,fov,Ms)
-
-        m = np.zeros((3,nx,ny,nz))
+        
+        self.dims = (32,64,16)
+        self.cellsize = (1e-9, 1e-9, 1e-9)
+        self.fov = 128
+        self.Ms = 1e5
+        self.phi_theory = phase_in_theory(mx, my, *self.dims,*self.cellsize,self.fov,self.fov,self.Ms)
+        if torch.cuda.is_available:
+            self.device = torch.device("cuda")
+        else:
+            self.device = torch.device("cpu")
+            
+        m = np.zeros((3,*self.dims))
         m[0,], m[1,] = mx,my
-        phasemapper = PhaseMapper(2*fov, dx, rotation_padding=100).to(device)
-        phi2 = phasemapper(m, theta=0., axis=0, Ms=Ms)
-        phi2 = phi2.detach().cpu().numpy()[fov//2:-fov//2, fov//2:-fov//2]
-        phi2 = -1 * phi2 # we are using beam along z- direction
-        show_array([phi1, phi2, phi1-phi2], titles=['theory', 'simu', 'diff'])
-        print("mean error:", np.mean(np.abs(phi1-phi2)) / np.mean(np.abs(phi1)))
+        self.m = torch.from_numpy(m).to(self.device)
+        self.phasemapper = PhaseMapper(2*self.fov, self.cellsize[0], rotation_padding=100).to(self.device)
+        
+    def test_phase(self):
+        phi_simulate = self.phasemapper(self.m, theta=0., axis=0, Ms=self.Ms)
+        phi_simulate = phi_simulate.detach().cpu().numpy()[self.fov//2:-self.fov//2, self.fov//2:-self.fov//2]
+        phi_simulate = -1 * phi_simulate # we are using beam along z- direction, but the theory solution is using z+.
+        show_list([self.phi_theory, 
+                   phi_simulate, 
+                   self.phi_theory - phi_simulate], titles=['theory', 'simulation', 'difference'])
+        
+        print("mean error:", np.mean(np.abs(self.phi_theory - phi_simulate)) / np.mean(np.abs(self.phi_theory)))
         plt.savefig("phase.png", dpi=100)
         plt.close()
-        plt.plot(phi1[:, fov//2], label='theory')
-        plt.plot(phi2[:, fov//2], ls='-.', label='simu')
+        plt.plot(self.phi_theory[:, self.fov//2], label='theory')
+        plt.plot(phi_simulate[:, self.fov//2], ls='-.', label='simulation')
         plt.legend()
         plt.savefig("line.png", dpi=100)
+        plt.close()
+        
+    def test_ltem(self):
+        # amp= np.ones((128, 128))
+        # nx, ny = self.dims[0], self.dims[1]
+        # x0, y0 = (128-nx)//2, (128-ny)//2
+        # amp[x0:x0+nx, y0:y0+ny] = 0.1
+        thickness = np.zeros((128, 128))
+        nx, ny = self.dims[0], self.dims[1]
+        x0, y0 = (128-nx)//2, (128-ny)//2
+        thickness[x0:x0+nx, y0:y0+ny] = 1e-9*self.dims[2]
+
+        ltem = maglab.LTEM((128,128), dx=self.cellsize[0], C_s=0., theta_c=0.)
+        amp = ltem.get_amplitude(torch.from_numpy(thickness), 1.)
+        image = ltem(amp, 
+                     torch.from_numpy(self.phi_theory),
+                     df=5e-6).detach().cpu().numpy()
+        
+        show_list([amp.numpy(), self.phi_theory, image], titles=["Amp", "Phase", "Image"], same_cb=False)
+        plt.savefig("LTEM_image.png", dpi=100)
+        
+        
+        
+if __name__ == '__main__':
+    unittest.main()

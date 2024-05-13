@@ -9,7 +9,7 @@ import maglab
 
 
 import matplotlib.pyplot as plt
-from maglab.utils import show,show_array
+from maglab.utils import show,show_list
 import fabio
 
 
@@ -24,21 +24,28 @@ defocus = np.array([-1440000,-1210000,-1000000,-810000,-640000,-490000,-360000,-
 
 
 ids = [2,5,19,22]
-show_array([A_samples[i] for i in ids], titles=["{:.4e}nm".format(x*1e9) for x in defocus[ids]],
+show_list([A_samples[i] for i in ids], titles=["{:.4e}nm".format(x*1e9) for x in defocus[ids]],
            same_cb=False)
 plt.savefig("FresnelImage.png", dpi=100)
 plt.close()
 
+# phase reconstruct using normal TIE
+dx = 6.9e-9
+tie = maglab.TIE((512,512), dx,  qc=1.5e6)
+phi = tie(np.array(A_samples[ids]), defocus[ids])
+show(phi)
+plt.savefig("NormalTIE.png", dpi=100)
+plt.close()
 
+# phase reconstruct using automatic differentiation TIE
 E = 200.0e3
 Cs=1.0e6 * 1e-9
 Cc=5.0e6 * 1e-9
 Ca=0.0e6 * 1e-9
 phi_a=0
 def_spr = 500 * 1e-9
-dx = 6.9e-9
 
-lt = maglab.LTEM(512, dx=dx, C_s=Cs, C_a=Ca,phi_a=phi_a,
+ltem = maglab.LTEM((512,512), dx=dx, C_s=Cs, C_a=Ca,phi_a=phi_a,
               theta_c = 0.01e-3).cuda()
 
 y0 = torch.tensor(A_samples[ids]).cuda()
@@ -52,11 +59,11 @@ optimizable = [amp_sqrt_guess, phase_guess]
 optimizer = torch.optim.Adam(optimizable, lr=1e-2)
 mse = torch.nn.MSELoss().cuda()
 
-total_epoches = 10000
+total_epoches = 1000
 
 for i in range(total_epoches):
     optimizer.zero_grad()
-    intensity_pred = torch.stack([lt.get_intensity(amp_sqrt_guess**2, phase_guess, df=df, spread=def_spr) for df in defocus[ids]])
+    intensity_pred = torch.stack([ltem(amp_sqrt_guess**2, phase_guess, df=df, spread=def_spr) for df in defocus[ids]])
     loss = mse(y0, intensity_pred)
     loss.backward(retain_graph=True)
     optimizer.step()
@@ -66,12 +73,11 @@ for i in range(total_epoches):
 
 data = [x.detach().cpu().numpy() for x in [amp_sqrt_guess**2, phase_guess]]
 data[1] -= data[1].mean()
-show_array(data, titles=["amp", "phase"], same_cb=False)
-plt.savefig("results.png", dpi=100)
+show_list(data, titles=["amp", "phase"], same_cb=False)
+plt.savefig("AD_TIE.png", dpi=100)
 plt.close()
 
-y1 = torch.stack([lt.get_intensity(amp_sqrt_guess**2, phase_guess, df=df, spread=def_spr) for df in defocus[ids]]).detach().cpu().numpy()
-show_array([y1[i] for i in range(len(ids))], titles=["{:.4e}nm".format(x*1e9) for x in defocus[ids]],
+y1 = torch.stack([ltem(amp_sqrt_guess**2, phase_guess, df=df, spread=def_spr) for df in defocus[ids]]).detach().cpu().numpy()
+show_list([y1[i] for i in range(len(ids))], titles=["{:.4e}nm".format(x*1e9) for x in defocus[ids]],
            same_cb=False)
 plt.savefig("predFresnelImage.png", dpi=100)
-plt.close()

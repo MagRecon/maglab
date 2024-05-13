@@ -2,8 +2,42 @@ from copy import deepcopy
 import numpy as np
 import torch
 import torch.nn.functional as F
+from .const import c_m
+import scipy.constants as const
 
-def vector_to_angles(m):
+def get_lam(E):
+    """Calculate the wavelength of an electron using the accelerating voltage.
+    Args:
+        E (float): Accelerating voltage (V)
+
+    Returns:
+        lam (float): Electron wavelength (m)
+    """
+    ce = const.elementary_charge
+    me = const.electron_mass
+    cc = const.speed_of_light
+    E_e = me*cc**2 + E * ce
+    c1 = E_e ** 2 - (me*cc**2)**2
+    p = np.sqrt(c1/cc**2)
+    lam = const.Planck / p
+    return lam
+
+def partial_z(image_stack, defocus_seris):
+    l, nx, ny = image_stack.shape
+    deriv = np.zeros((nx,ny))
+    I0 = np.zeros((nx,ny))
+    for i in range(nx):
+        a, b, c = np.polyfit(defocus_seris, image_stack[:,i,:], 2)
+        deriv[i,:] = b
+        I0[i,:] = c
+    return deriv, I0
+
+def get_induction(phase, dx):
+    By = np.gradient(phase, axis=0) * 1/dx * 1/c_m
+    Bx = -1 * np.gradient(phase, axis=1) * 1/dx * 1/c_m
+    return np.array([Bx, By])
+
+def Cartesian2Spherical(m):
     norm = torch.sqrt(m[0,]**2 + m[1,]**2 + m[2,]**2)
     m = m/(norm+1e-30)
     theta = torch.arccos(m[2,])

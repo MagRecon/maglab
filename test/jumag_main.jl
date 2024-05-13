@@ -5,11 +5,23 @@ using Printf
 N = 11
 nx,ny,nz = N, N ,N
 
-mesh = FDMesh(nx=nx,ny=ny,nz=nz,dx=1e-9,dy=1e-9,dz=1e-9)
+function init_m0_fun(i,j,k,dx,dy,dz)
+    qx, qy, qz = 1/2, 1/3, 1/4
+    phi = qx * i + qy * j + qz * k
+    theta = 2/3 * pi
+    return sin(theta)*cos(phi), sin(theta)*sin(phi), cos(theta)
+end
 
-function gen_energy(fun)
+
+function gen_energy(;pbc="", cylinder=false)
+    mesh = FDMesh(nx=nx,ny=ny,nz=nz,dx=1e-9,dy=1e-9,dz=1e-9, pbc=pbc)
     sim = Sim(mesh)
-    fun(sim, 8e5)
+    if cylinder
+        geo = JuMag.Cylinder(radius=5e-9)
+        set_Ms(sim, geo, 8e5 )
+    else
+        set_Ms(sim, 8e5)
+    end
     exch = add_exch(sim, 1e-12)
     dmi = add_dmi(sim, 1e-4)
     anis = add_anis(sim, 1e3)
@@ -17,8 +29,7 @@ function gen_energy(fun)
     zeeman = add_zeeman(sim, (0,0,1e3))
     interfacial_dmi = add_dmi(sim, 2e-4, type="interfacial")
 
-    m0 = npzread("m0.npy")
-    init_m0(sim, reshape(m0, :))
+    init_m0(sim, init_m0_fun)
 
     num = length(sim.interactions)
     all_energy = zeros(num,nx,ny,nz)
@@ -26,12 +37,17 @@ function gen_energy(fun)
         JuMag.effective_field(interaction, sim, sim.spin, 0.0)
         all_energy[i,:,:,:] = reshape(interaction.energy, (nx,ny,nz))
     end
-    return all_energy, reshape(sim.spin, (3,nx,ny,nz))
+    geo = sim.mu0_Ms / (8e5*JuMag.mu_0)
+    return all_energy, reshape(sim.spin, (3,nx,ny,nz)), reshape(geo, (nx,ny,nz))
 end
 
-e, m = gen_energy(set_Ms)
-npzwrite("energy.npy", e)
+e, m, ms = gen_energy(pbc="")
+npzwrite("dataset/energy.npy", e)
+npzwrite("dataset/m0.npy", m)
 
-e, m = gen_energy(set_Ms_cylindrical)
-npzwrite("energy_cyd.npy", e)
-npzwrite("m0_cyd.npy", m)
+e, m, ms = gen_energy(pbc="", cylinder=true)
+npzwrite("dataset/energy_cylinder.npy", e)
+npzwrite("dataset/m0_cylinder.npy", m)
+
+e, m, ms = gen_energy(pbc="xy")
+npzwrite("dataset/energy_pbc_xy.npy", e)

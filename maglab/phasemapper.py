@@ -109,9 +109,10 @@ class PhaseMapper(nn.Module):
             u = padding_into(u, (self.fov,self.fov))
             v = padding_into(v, (self.fov,self.fov))
             
-        u, v = self.cellsize * torch.fft.ifftshift(u,dim=(0,1)), self.cellsize * torch.fft.ifftshift(v,dim=(0,1))
+        u = self.cellsize * torch.fft.ifftshift(u,dim=(0,1))
+        v = self.cellsize * torch.fft.ifftshift(v,dim=(0,1))
         fft_u, fft_v = torch.fft.rfft2(u), torch.fft.rfft2(v)
         A_k = -1j * mu_0 * Ms * (fft_u*self.ker_y - fft_v*self.ker_x)
-        phi_k = -1 * c_m * A_k #beam along z+ direction
+        phi_k = c_m * A_k #beam along z+ direction
         phi = -1 * torch.fft.irfft2(phi_k) #beam along z- direction
         return torch.fft.fftshift(phi, dim=(0,1))

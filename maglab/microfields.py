@@ -11,18 +11,26 @@ class MicroField(nn.Module):
     def forward(self):
         pass
     
+    def _init_pbc(self, pbc:str):
+        # if pbc, use roll without padding
+        self.pbc_x = 0 if 'x' in pbc else 1
+        self.pbc_y = 0 if 'y' in pbc else 1
+        self.pbc_z = 0 if 'z' in pbc else 1
+        self.padding = (self.pbc_z, self.pbc_z, self.pbc_y, self.pbc_y, self.pbc_x, self.pbc_x)
+        self.crop = tuple(-1*v for v in self.padding)
+        
 class Exch(MicroField):
-    def __init__(self, A, cellsize, pbc=False, save_energy=False):
+    def __init__(self, A, cellsize, pbc:str, save_energy=False):
         super().__init__()
         self.A = nn.Parameter(torch.tensor([A]), requires_grad=False)
         self.cellsize = cellsize
         self.pbc = pbc
         self.save_energy = save_energy
+        self._init_pbc(pbc)
         
     def forward(self, x, geo, Ms=None):   
-        if not self.pbc:
-            x = F.pad(x, (1, 1, 1, 1, 1, 1), 'constant', 0)
-            geo = F.pad(geo, (1, 1, 1, 1, 1, 1), 'constant', 0)
+        x = F.pad(x, self.padding, 'constant', 0)
+        geo = F.pad(geo, self.padding, 'constant', 0)
             
         f = torch.zeros_like(x)
         for i in range(1,4):
@@ -31,8 +39,7 @@ class Exch(MicroField):
 
         E = torch.sum(f * x, axis=0)
         
-        if not self.pbc:
-            E = E[1:-1,1:-1,1:-1]
+        E = F.pad(E, self.crop, 'constant', 0)
         
         E = -self.A * self.cellsize * E
         
@@ -47,16 +54,16 @@ class Exch(MicroField):
     
 class DMI(MicroField):
     # positive D -> left chiral
-    def __init__(self, D, cellsize, pbc=False, save_energy=False):
+    def __init__(self, D, cellsize, pbc:str, save_energy=False):
         super().__init__()
         self.cellsize2 = cellsize**2
         self.D = nn.Parameter(torch.tensor([D]), requires_grad=False)
         self.pbc = pbc
         self.save_energy = save_energy
+        self._init_pbc(pbc)
         
     def forward(self, x, geo, Ms=None):
-        if not self.pbc:
-            x = F.pad(x,(1,1,1,1,1,1), 'constant', 0.)
+        x = F.pad(x, self.padding, 'constant', 0)
             
         d1 = torch.cross(x, torch.roll(x, shifts=(1), dims=(1)), dim=0)[0,]
         d2 = -1 * torch.cross(x, torch.roll(x, shifts=(-1), dims=(1)), dim=0)[0,]
@@ -66,8 +73,7 @@ class DMI(MicroField):
         d6 = -1 * torch.cross(x, torch.roll(x, shifts=(-1), dims=(3)), dim=0)[2,]
         E = d1+d2+d3+d4+d5+d6
         
-        if not self.pbc:
-            E = E[1:-1,1:-1,1:-1]
+        E = F.pad(E, self.crop, 'constant', 0)
         
         E = 0.5 * self.D * self.cellsize2 * E    
         
@@ -82,16 +88,15 @@ class DMI(MicroField):
     
 class InterfacialDMI(MicroField):
     # positive D -> left chiral
-    def __init__(self, D, cellsize, pbc=False, save_energy=False):
+    def __init__(self, D, cellsize, pbc:str, save_energy=False):
         super().__init__()
         self.cellsize2 = cellsize**2
         self.D = nn.Parameter(torch.tensor([D]), requires_grad=False)
-        self.pbc = pbc
         self.save_energy = save_energy
+        self._init_pbc(pbc)
         
     def forward(self, x, geo, Ms=None):
-        if not self.pbc:
-            x = F.pad(x,(1,1,1,1,1,1), 'constant', 0.)
+        x = F.pad(x, self.padding, 'constant', 0)
             
         d1 = torch.cross(x, torch.roll(x, shifts=(1), dims=(1)), dim=0)[1,]
         d2 = -1 * torch.cross(x, torch.roll(x, shifts=(-1), dims=(1)), dim=0)[1,]
@@ -99,8 +104,7 @@ class InterfacialDMI(MicroField):
         d4 = torch.cross(x, torch.roll(x, shifts=(-1), dims=(2)), dim=0)[0,]
         E = d1+d2+d3+d4
         
-        if not self.pbc:
-            E = E[1:-1,1:-1,1:-1]
+        E = F.pad(E, self.crop, 'constant', 0)
         
         E = 0.5 * self.D * self.cellsize2 * E    
         
@@ -119,8 +123,8 @@ class Anistropy(MicroField):
         super().__init__()
         assert len(axis) == 3, "axis should be tuple of 3 numbers"
         axis_norm = np.sqrt(axis[0]**2+axis[1]**2+axis[2]**2)
-        self.axis_item = tuple([x/axis_norm for x in axis])
-        axis_np = np.array(self.axis_item)
+        self.tuple_axis = tuple([x/axis_norm for x in axis])
+        axis_np = np.array(self.tuple_axis)
         axis_np = np.expand_dims(axis_np, axis=(1,2,3)).astype(float)
         self.register_buffer('axis', torch.tensor(axis_np, requires_grad=False).float())
         self.dV = cellsize**3
@@ -139,7 +143,7 @@ class Anistropy(MicroField):
     
     def get_params(self,):
         return {'Ku': self.Ku.item(),
-                'axis': self.axis_item}
+                'axis': self.tuple_axis}
     
 class Zeeman(MicroField):
     def __init__(self, H, cellsize, save_energy=False):

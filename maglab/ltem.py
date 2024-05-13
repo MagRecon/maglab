@@ -1,4 +1,4 @@
-from .helper import padding_into
+from .helper import padding_into, get_lam
 import torch
 import scipy.constants as const
 import numpy as np
@@ -11,7 +11,9 @@ class LTEM(torch.nn.Module):
     """
     This is a PyTorch-based reimplementation of the 'Microscope' class from PyLorentz.
 
-    Attributes:
+    Args:
+        fov (nx,ny): Shape of intensity map.
+        dx (float): Length per pixel (meter).
         E (float): Accelerating voltage (V). Default 200kV.
         C_s (float): Spherical aberration (m). Default 1mm.
         C_a (float): 2-fold astigmatism (m). Default 0.
@@ -27,37 +29,23 @@ class LTEM(torch.nn.Module):
         self.C_a = C_a
         self.phi_a = phi_a
         self.E = E
-        self.lam = self.get_lam(E)
+        self.lam = get_lam(E)
         self.theta_c = theta_c
         self.aperture = 1.0
         self._register_grid()
     
-    def get_lam(self, E):
-        """Calculate the wavelength of an electron using the accelerating voltage.
-        Args:
-            E (float): Accelerating voltage (V)
-
-        Returns:
-            lam (float): Electron wavelength (m)
-        """
-        ce = const.elementary_charge
-        me = const.electron_mass
-        cc = const.speed_of_light
-        E_e = me*cc**2 + E * ce
-        c1 = E_e ** 2 - (me*cc**2)**2
-        p = np.sqrt(c1/cc**2)
-        lam = const.Planck / p
-        return lam
-    
     def _register_grid(self):
         nx, ny = self.fov
-        kx, ky= torch.fft.fftfreq(nx, self.dx), torch.fft.fftfreq(ny, self.dx)
+        kx, ky = torch.fft.fftfreq(nx, self.dx), torch.fft.fftfreq(ny, self.dx)
+        # pi = torch.pi
+        # kx, ky = 2*pi*kx, 2*pi*ky
         kx, ky = torch.meshgrid(kx, ky, indexing='ij')
+        
         self.register_buffer('kx', kx)
         self.register_buffer('ky', ky)
         self.register_buffer('k2', kx**2+ky**2)
     
-    def get_intensity(self, amp, phase, df=0, spread=120e-9):
+    def __call__(self, amp, phase, df=0, spread=120e-9):
         """Generates a Fresnel image using given amplitude and phase data.
 
         Args:
@@ -106,10 +94,11 @@ class LTEM(torch.nn.Module):
         Returns:
             amp(torch.Tensor): A 2d tensor of size (n, n) containing amplitude values.
         """
+        dev = thickness.device
         amp = torch.exp(-1*thickness/eta_0)
         if filter:
             amp = gaussian_filter(amp.detach().cpu().numpy(), sigma=2)
-            amp = torch.tensor(amp).cuda()
+            amp = torch.tensor(amp).to(dev)
    
         return amp
         
