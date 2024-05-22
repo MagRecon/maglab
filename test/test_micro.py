@@ -10,7 +10,7 @@ class TestMicro(unittest.TestCase):
         nx,ny,nz=64,64,4
         dx=5e-9
         geo = maglab.geo.cylider(nx,nz)
-        self.micro = maglab.Micro(nx, ny, nz, dx, pbc="x")
+        self.micro = maglab.Micro(nx, ny, nz, dx, pbc="x").cpu()
         
     def tearDown(self):
         self.micro = None    
@@ -34,8 +34,15 @@ class TestMicro(unittest.TestCase):
         self.assertTrue(self.micro.spherical.requires_grad)
         
     def test_io(self):
+        old_spin = self.micro.get_spin().detach().clone()
+        old_Ms = self.micro.Ms.detach().clone()
         self.micro.save_state("state.pth")
-        micro1 = maglab.Micro.load_state("state.pth")
+        
+        micro_load = maglab.Micro.load_state("state.pth").cpu()
+        new_spin = micro_load.get_spin().detach().clone()
+        new_Ms = micro_load.Ms.detach().clone()
+        self.assertTrue(torch.allclose(old_spin, new_spin))
+        self.assertTrue(torch.allclose(old_Ms, new_Ms))
         
 
 if __name__ == '__main__':
