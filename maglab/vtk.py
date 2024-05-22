@@ -6,7 +6,7 @@ import numpy as np
 def cordns(N, d):
     return N*d*np.fft.fftshift(np.fft.fftfreq(N))
 
-def write_vtk(filename, m, data_name= "M", cellsize=5e-9): 
+def write_vtk(filename, m, data_name= "M", dx=5e-9): 
     folder = os.path.dirname(filename)
     if not os.path.isdir(folder):
         print(f"making path: {folder}")
@@ -25,9 +25,9 @@ def write_vtk(filename, m, data_name= "M", cellsize=5e-9):
         (nx, ny, nz) = m.shape
         
     # Coordinates 
-    X = cordns(nx, cellsize)
-    Y = cordns(ny, cellsize)
-    Z = cordns(nz, cellsize)
+    X = cordns(nx, dx)
+    Y = cordns(ny, dx)
+    Z = cordns(nz, dx)
     
     if filename.endswith(".vtr") or filename.endswith(".vtk"):
         filename = filename[0:-4]

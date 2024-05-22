@@ -24,7 +24,7 @@ function gen_energy(;pbc="", cylinder=false)
     end
     exch = add_exch(sim, 1e-12)
     dmi = add_dmi(sim, 1e-4)
-    anis = add_anis(sim, 1e3)
+    anis = add_anis(sim, 1e3, axis=(0.3,0.4,0.5))
     demag = add_demag(sim)
     zeeman = add_zeeman(sim, (0,0,1e3))
     interfacial_dmi = add_dmi(sim, 2e-4, type="interfacial")

@@ -78,14 +78,14 @@ def coords(n, d=1):
     return d * (torch.arange(n)-n//2).double()
 
 class DeMag(MicroField):        
-    def __init__(self, nx, ny, nz, cellsize, save_energy=False):
+    def __init__(self, nx, ny, nz, dx, save_energy=False):
         super().__init__()
         self.shape = (nx,ny,nz)
         self.save_energy = save_energy
-        self.dV = cellsize**3
+        self.dV = dx**3
         
         logger.debug("Initializing demag kernel...", end='')
-        x,y,z = coords(2*nx+2, cellsize).cuda(), coords(2*ny+2, cellsize).cuda(), coords(2*nz+2, cellsize).cuda()
+        x,y,z = coords(2*nx+2, dx).cuda(), coords(2*ny+2, dx).cuda(), coords(2*nz+2, dx).cuda()
             
         X,Y,Z = torch.meshgrid(x,y,z,indexing='ij')
         p = torch.stack([X,Y,Z], axis=0)
@@ -127,10 +127,8 @@ class DeMag(MicroField):
         return x
     
     # input should be m*Ms    
-    def forward(self, M, geo, Ms=None):
-        if Ms:
-            M = M * Ms
-            
+    def forward(self, m, Ms):
+        M = m * Ms   
         for i in range(3):
             if not M.shape[i+1] == self.shape[i]:
                 raise ValueError("DeMag: Shape not match! Need {}, but got {} instead".format(self.shape, M.shape[1:]))

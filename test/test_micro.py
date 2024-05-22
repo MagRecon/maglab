@@ -8,9 +8,9 @@ import unittest
 class TestMicro(unittest.TestCase):
     def setUp(self):
         nx,ny,nz=64,64,4
-        cellsize=5e-9
+        dx=5e-9
         geo = maglab.geo.cylider(nx,nz)
-        self.micro = maglab.Micro(geo, cellsize)
+        self.micro = maglab.Micro(nx, ny, nz, dx, pbc="x")
         
     def tearDown(self):
         self.micro = None    
@@ -28,10 +28,10 @@ class TestMicro(unittest.TestCase):
 
     def test_set_requires_grad(self):
         self.micro.set_requires_grad(False)
-        self.assertTrue(not self.micro.angles.requires_grad)
+        self.assertTrue(not self.micro.spherical.requires_grad)
         
         self.micro.set_requires_grad(True)
-        self.assertTrue(self.micro.angles.requires_grad)
+        self.assertTrue(self.micro.spherical.requires_grad)
         
     def test_io(self):
         self.micro.save_state("state.pth")

@@ -5,16 +5,16 @@ from .helper import partial_z, get_lam
 __all__ = ['TIE']
 
 class TIE:
-    def __init__(self, image_size, cellsize, E=200e3, qc=0.):
+    def __init__(self, image_size, dx, E=200e3, qc=0.):
         self.image_size = image_size
-        self.cellsize = cellsize
+        self.dx = dx
         self.lam = get_lam(E)
         self.init_q_grid()
         self.qc = qc
         
     def init_q_grid(self):
-        qx = 2*np.pi*np.fft.fftfreq(self.image_size[0], self.cellsize)
-        qy = 2*np.pi*np.fft.fftfreq(self.image_size[1], self.cellsize)
+        qx = 2*np.pi*np.fft.fftfreq(self.image_size[0], self.dx)
+        qy = 2*np.pi*np.fft.fftfreq(self.image_size[1], self.dx)
         self.QX, self.QY = np.meshgrid(qx, qy, indexing='ij')
         self.Q2 = self.QX ** 2 + self.QY ** 2
             
@@ -61,8 +61,8 @@ class TIE:
         """
         pzI0, I0 = partial_z(image_series, defocus_series)
         inv_ll = self.inverse_laplacian_q(pzI0)
-        f1_q = -1j * self.QX * inv_ll
-        f2_q = -1j * self.QY * inv_ll
+        f1_q = 1j* self.QX * inv_ll
+        f2_q = 1j* self.QY * inv_ll
         f1 = self._ifft(f1_q)
         f2 = self._ifft(f2_q)
         for (i,df) in enumerate(defocus_series):
@@ -73,7 +73,7 @@ class TIE:
         f2_I = f2 / I0
         f1_I_q = self._fft(f1_I)
         f2_I_q = self._fft(f2_I)
-        f_q = -1j * (self.QX *f1_I_q + self.QY *f2_I_q)  * self.get_qi()
+        f_q = 1j*(self.QX *f1_I_q + self.QY *f2_I_q)  * self.get_qi()
         f_q[0,0] = 0.
         f = self._ifft(f_q).real
         transfer_func = self.get_phase_transfer_function_f(0., C_a, phi_a, C_s)

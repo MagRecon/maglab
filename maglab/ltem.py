@@ -59,7 +59,7 @@ class LTEM(torch.nn.Module):
         """
         obj_wave = self.get_obj_wave(amp, phase)
         obj_wave_f = torch.fft.fft2(torch.fft.ifftshift(obj_wave, dim=(0,1)))
-        t_f = self.get_microscope_transfer_function_f(df, spread)
+        t_f = self.get_spinicroscope_transfer_function_f(df, spread)
         img_wave_f = obj_wave_f * t_f
         img_wave = torch.fft.ifft2(img_wave_f)
         img = torch.abs(img_wave) ** 2
@@ -81,7 +81,7 @@ class LTEM(torch.nn.Module):
         if padding:
             nx = self.fov[0]
             geo = padding_into(geo, (nx,nx,nx))
-        proj = projection(geo, angle, axis) * micro.cellsize
+        proj = projection(geo, angle, axis) * micro.dx
         return proj
 
     def get_amplitude(self, thickness, eta_0, filter=True):
@@ -102,7 +102,7 @@ class LTEM(torch.nn.Module):
    
         return amp
         
-    def get_microscope_transfer_function_f(self, df, spread):
+    def get_spinicroscope_transfer_function_f(self, df, spread):
         a_f = self.aperture
         chi_f = self.get_phase_transfer_function_f(df)
         g_f = self.get_damping_envelope_f(df, spread)

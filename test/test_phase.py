@@ -41,10 +41,11 @@ class Test(unittest.TestCase):
         mx,my=np.cos(theta), np.sin(theta)
         
         self.dims = (32,64,16)
-        self.cellsize = (1e-9, 1e-9, 1e-9)
+        self.dx = (1e-9, 1e-9, 1e-9)
         self.fov = 128
         self.Ms = 1e5
-        self.phi_theory = phase_in_theory(mx, my, *self.dims,*self.cellsize,self.fov,self.fov,self.Ms)
+        self.phi_theory = phase_in_theory(mx, my, *self.dims,*self.dx,self.fov,self.fov,self.Ms)
+        print("estimated Ms: {:.2e} A/m".format(maglab.estimate_Ms(self.phi_theory, 16, 1e-9)))
         if torch.cuda.is_available:
             self.device = torch.device("cuda")
         else:
@@ -53,7 +54,7 @@ class Test(unittest.TestCase):
         m = np.zeros((3,*self.dims))
         m[0,], m[1,] = mx,my
         self.m = torch.from_numpy(m).to(self.device)
-        self.phasemapper = PhaseMapper(2*self.fov, self.cellsize[0], rotation_padding=100).to(self.device)
+        self.phasemapper = PhaseMapper(2*self.fov, self.dx[0], rotation_padding=100).to(self.device)
         
     def test_phase(self):
         phi_simulate = self.phasemapper(self.m, theta=0., axis=0, Ms=self.Ms)
@@ -82,7 +83,7 @@ class Test(unittest.TestCase):
         x0, y0 = (128-nx)//2, (128-ny)//2
         thickness[x0:x0+nx, y0:y0+ny] = 1e-9*self.dims[2]
 
-        ltem = maglab.LTEM((128,128), dx=self.cellsize[0], C_s=0., theta_c=0.)
+        ltem = maglab.LTEM((128,128), dx=self.dx[0], C_s=0., theta_c=0.)
         amp = ltem.get_amplitude(torch.from_numpy(thickness), 1.)
         image = ltem(amp, 
                      torch.from_numpy(self.phi_theory),

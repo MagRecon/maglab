@@ -35,5 +35,5 @@ __all__.extend(ltem.__all__)
 __all__.extend(tie.__all__)
 
 
-THIS_DIR = dirname(__file__)
-sys.path.append(THIS_DIR)
+# THIS_DIR = dirname(__file__)
+# sys.path.append(THIS_DIR)

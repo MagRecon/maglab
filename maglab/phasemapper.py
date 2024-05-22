@@ -38,7 +38,7 @@ def projection(x, theta, axis):
     return torch.sum(x, axis=-1)
 
 class PhaseMapper(nn.Module):
-    def __init__(self, fov, cellsize, padding=True, rotation_padding=None):
+    def __init__(self, fov, dx, padding=True, rotation_padding=None):
         super().__init__()
 
         self.fov = fov
@@ -49,7 +49,7 @@ class PhaseMapper(nn.Module):
                 raise ValueError("Need specify rotation_padding, which can not be larger than fov.")
         else: 
             self.pd_sz = -1
-        self._register_kernel(fov, cellsize)
+        self._register_kernel(fov, dx)
         
     def get_device(self):
         return self.ker_x.device
@@ -76,8 +76,8 @@ class PhaseMapper(nn.Module):
         else:
             raise ValueError("axis mush be one of (0,1,2)!")
     
-    def _register_kernel(self, fov, cellsize):
-        kx, ky = 2*torch.pi * torch.fft.fftfreq(fov,cellsize), 2*torch.pi * torch.fft.rfftfreq(fov,cellsize)
+    def _register_kernel(self, fov, dx):
+        kx, ky = 2*torch.pi * torch.fft.fftfreq(fov,dx), 2*torch.pi * torch.fft.rfftfreq(fov,dx)
         KX, KY = torch.meshgrid(kx,ky,indexing='ij')
         k2 = torch.pow(KX,2) + torch.pow(KY,2)
         with warnings.catch_warnings():
@@ -88,7 +88,7 @@ class PhaseMapper(nn.Module):
             
         self.register_buffer('ker_x', ker_x)
         self.register_buffer('ker_y', ker_y)
-        self.cellsize = cellsize
+        self.dx = dx
 
     def __call__(self, m, theta, axis, Ms=1/mu_0):
         """Return phase.
@@ -97,20 +97,20 @@ class PhaseMapper(nn.Module):
             M : 3D magnetization tensor shaped (3,nx,ny,nz)
             theta : projection angle in degree
             axis : rotation axis, which can be chosen from (0,1,2) representing x,y,and z respectively.
-            cellsize: unit length in meter.
+            dx: unit length in meter.
 
         Returns:
             phase(ndarray): 2D phase.
         """
-        # cellsize:unit length of the cubic meshgrid
+        # dx:unit length of the cubic meshgrid
         u, v = self.get_uv(m, theta, axis)
         (nx,ny) = u.shape
         if self.fov > nx or self.fov > ny:
             u = padding_into(u, (self.fov,self.fov))
             v = padding_into(v, (self.fov,self.fov))
             
-        u = self.cellsize * torch.fft.ifftshift(u,dim=(0,1))
-        v = self.cellsize * torch.fft.ifftshift(v,dim=(0,1))
+        u = self.dx * torch.fft.ifftshift(u,dim=(0,1))
+        v = self.dx * torch.fft.ifftshift(v,dim=(0,1))
         fft_u, fft_v = torch.fft.rfft2(u), torch.fft.rfft2(v)
         A_k = -1j * mu_0 * Ms * (fft_u*self.ker_y - fft_v*self.ker_x)
         phi_k = c_m * A_k #beam along z+ direction

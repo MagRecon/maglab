@@ -6,19 +6,18 @@ import unittest
 sin, cos = np.sin, np.cos
 
 class test1(unittest.TestCase):
-    def setUp(self):
+    @classmethod
+    def setUpClass(cls):
         pass
-        # nx,ny,nz = 11,11,11
-        # cellsize = 1e-9
-        # Ms = 8e5
     
-    def create_micro(self, m0, pbc):
-        geo = maglab.Micro.m2geo(m0)
-        cellsize = 1e-9
-        micro = maglab.Micro(geo, cellsize, pbc=pbc)
+    def create_micro(self, m0, Ms, pbc):
+        dx = 1e-9
+        nx,ny,nz = 11,11,11
+        micro = maglab.Micro(nx, ny, nz, dx, pbc=pbc)
+        micro.set_Ms(Ms)
         micro.add_exch(1e-12, save_energy=True)
         micro.add_dmi(1e-4, save_energy=True)
-        micro.add_anis(1e3, save_energy=True)
+        micro.add_anis(1e3, anis_axis=(0.3,0.4,0.5), save_energy=True)
         micro.add_demag(save_energy=True)
         micro.add_zeeman((0,0,1e3), save_energy=True)
         micro.add_interfacial_dmi(2e-4, save_energy=True)
@@ -33,9 +32,9 @@ class test1(unittest.TestCase):
     def maxl1(self, x):
         return torch.max(torch.abs(x)).item()
     
-    def compare_error(self, m0, e_jumag, pbc=""):
-        micro = self.create_micro(m0, pbc)
-        micro.loss(Ms=8e5)
+    def compare_energy(self, m0, Ms, e_jumag, pbc=""):
+        micro = self.create_micro(m0, Ms, pbc)
+        micro.loss()
             
         e = np.stack([micro.interactions[i].E.detach().cpu().numpy() \
                       for i in range(len(micro.interactions))])
@@ -51,18 +50,21 @@ class test1(unittest.TestCase):
     def test_cubiod(self):
         # m0 is filled with cubiod geo
         m0 = np.load("dataset/m0.npy")
+        Ms = 8e5 * maglab.Micro.m2geo(m0)
         e_jumag = torch.from_numpy(np.load("dataset/energy.npy"))
-        self.compare_error(m0, e_jumag)
+        self.compare_energy(m0, Ms, e_jumag)
     
     def test_cylinder(self):
         m0 = np.load("dataset/m0_cylinder.npy")
+        Ms = 8e5 * maglab.Micro.m2geo(m0)
         e_jumag = torch.from_numpy(np.load("dataset/energy_cylinder.npy"))
-        self.compare_error(m0, e_jumag)
+        self.compare_energy(m0, Ms, e_jumag)
         
     def test_pbc(self):
         m0 = np.load("dataset/m0.npy")
+        Ms = 8e5 * maglab.Micro.m2geo(m0)
         e_jumag = torch.from_numpy(np.load("dataset/energy_pbc_xy.npy"))
-        self.compare_error(m0, e_jumag, pbc="xy")
+        self.compare_energy(m0, Ms, e_jumag, pbc="xy")
         
 if __name__ == '__main__':
     unittest.main()

@@ -7,7 +7,7 @@ from .const import mu_0
 
 __all__ = ['show', 'show_list', 'estimate_Ms', 'estimate_m0']
 
-def estimate_Ms(phase, layer, dx, percentile=90):
+def estimate_Ms(phase, layer, dx, percentile=100):
     B = get_induction(phase, dx)
     Bxy = np.sqrt(B[0,]**2+B[1,]**2)
     vB = np.percentile(Bxy, percentile) / (layer*dx)

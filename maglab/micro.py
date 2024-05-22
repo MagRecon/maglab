@@ -5,63 +5,68 @@ import numpy as np
 import numbers
 from .microfields import Exch, DMI, Anistropy, Zeeman, InterfacialDMI
 from .demag import DeMag
-from .helper import Cartesian2Spherical
+from .helper import Cartesian2Spherical, Spherical2Cartesian, to_tensor, init_scalar
 import torch.nn.functional as F
+import logging
+
+logger = logging.getLogger(__name__)
 
 __all__ = ['Micro']
 
 
 class Micro(nn.Module):
-    def __init__(self, geo, cellsize, pbc:str=""):
+    def __init__(self, nx, ny, nz, dx=5e-9, pbc:str=""):
         """Initiate Micro class.
 
         Args:
-            geo (torch.Tensor or numpy.ndarray): 3d binary array contains geo infomation.
-            cellsize (float): dx in meter.
-            pbc (str, optional): Periodic boundary condition flag. If pbc in x-dim is required, set pbc="x". Defaults to "".
+            nx,ny,nz (int): xyz dimensions.
+            dx (float): dx in meter.
+            pbc (str, optional): Periodic boundary condition flag.
+                If pbc in x-dim is required, set pbc="x". Defaults to "".
         """
         super().__init__()
-        self.shape = geo.shape 
-        
-        geo = self._tensor(geo)
-        geo[geo.abs() > 1e-3] = 1
-        self.geo = nn.Parameter(geo, requires_grad=False)
-        
-        self.cellsize = cellsize
-        self.angles = nn.Parameter(torch.zeros((2,*self.shape)), requires_grad=True)
+        self.shape = (nx, ny, nz)
+        self._init_Ms()
+        self.dx = dx   
+        self.spherical = nn.Parameter(torch.zeros((2,*self.shape)), requires_grad=True)
         self.interactions = nn.ModuleList()
-        self.Ms = None
         self.pbc = pbc
         
-    @classmethod    
-    def _tensor(cls, x, ):
-        if isinstance(x, torch.Tensor):
-            x = x.detach().clone()
-        elif isinstance(x, np.ndarray):
-            x = torch.from_numpy(x)
-        else:
-            raise ValueError("Only accept torch.tensor or np.ndarray!")
-
-        return x.float()
+    def set_Ms(self, Ms):        
+        Ms = init_scalar(Ms, self.shape)
+        self.Ms = nn.Parameter(Ms, requires_grad=False)
+        self.geo = nn.Parameter((Ms>1e-3).float(), requires_grad=False)
         
+    def _init_Ms(self):
+        self.set_Ms(1/const.mu_0)
+            
     @classmethod
-    def m2geo(cls, mag):
-        mag = cls._tensor(mag)
+    def m2geo(cls, mag, tol=1e-3):
+        """Return geometry array by magnetization array.
+
+        Args:
+            mag (np.array or torch.Tensor): Magnetization array, with shape of (3,nx,ny,nz).
+            tol (float, optional): Critical value to judge if Ms is 0 or 1. Defaults to 1e-3.
+
+        Returns:
+            geometry(torch.Tensor): Binary array that contains the geometry infomation, with shape of (nx,ny,nz). 
+        """
+        mag = to_tensor(mag)
         mag.requires_grad = False
         
         geo = torch.sum(mag**2, dim=0)
-        geo[geo.abs() > 1e-3] = 1.
-        geo[geo.abs() <= 1e-3] = 0.
+        geo[geo.abs() > tol] = 1.
+        geo[geo.abs() <= tol] = 0.
         return geo
         
     def save_state(self, file_path, Ms=None):
         state = {}
-        state['angles'] = self.angles.detach().clone()
-        state['geo'] = self.geo.detach().clone()
-        state['cellsize'] = self.cellsize
+        state['shape'] = self.shape
+        state['dx'] = self.dx
+        state['Ms'] = self.Ms.detach().clone()
+        state['spherical'] = self.spherical.detach().clone()
         state['pbc'] = self.pbc
         state['interactions'] = self.get_interactions()
-        state['Ms'] = Ms
         torch.save(state, file_path)
     
     @classmethod
@@ -69,9 +74,10 @@ class Micro(nn.Module):
         if isinstance(state, str):
             state = torch.load(state)
         
-        micro = cls(state['geo'], state['cellsize'], state['pbc'])
-        micro.init_m0(state['angles'])
-        micro.Ms = state['Ms']
+        nx, ny, nz = state['shape']
+        micro = cls(nx, ny, nz, state['dx'], state['pbc'])
+        micro.init_m0(state['spherical'])
+        micro.set_Ms = state['Ms']
 
         if init_interactions :
             interactions = state['interactions']
@@ -94,38 +100,38 @@ class Micro(nn.Module):
             m[0],m[1],m[2] = x[0],x[1],x[2]
             x = Cartesian2Spherical(m)
         else:
-            x = self._tensor(x)
+            x = to_tensor(x)
             if x.shape[0] == 3:
                 x = Cartesian2Spherical(x)
-        self.angles.data.copy_(x)
+        self.spherical.data.copy_(x)
     
     def init_m0_random(self, seed=None):
         if seed:
             torch.manual_seed(seed)
             
-        self.angles[0,].data.copy_(torch.rand(self.shape) * torch.pi)
-        self.angles[1,].data.copy_(torch.rand(self.shape) * 2*torch.pi)    
+        self.spherical[0,].data.copy_(torch.rand(self.shape) * torch.pi)
+        self.spherical[1,].data.copy_(torch.rand(self.shape) * 2*torch.pi)    
         
     def set_requires_grad(self, requires_grad):
-        self.angles.requires_grad_(requires_grad)
+        self.spherical.requires_grad_(requires_grad)
        
     def add_exch(self, A, save_energy=False):
-        self.interactions.append(Exch(A, self.cellsize,  self.pbc,save_energy))
+        self.interactions.append(Exch(self.shape, self.dx,  A, self.pbc, save_energy))
         
     def add_dmi(self, D, save_energy=False):
-        self.interactions.append(DMI(D,self.cellsize, self.pbc, save_energy))
+        self.interactions.append(DMI(self.shape, self.dx,  D, self.pbc, save_energy))
         
     def add_interfacial_dmi(self, D, save_energy=False):
-        self.interactions.append(InterfacialDMI(D,self.cellsize, self.pbc, save_energy))
+        self.interactions.append(InterfacialDMI(self.shape, self.dx,  D, self.pbc, save_energy))
         
     def add_demag(self, save_energy=False):
-        self.interactions.append(DeMag(*self.shape, self.cellsize, save_energy))
+        self.interactions.append(DeMag(*self.shape, self.dx, save_energy))
         
-    def add_anis(self, Ku, axis=(0,0,1),save_energy=False):
-        self.interactions.append(Anistropy(Ku, self.cellsize, axis,save_energy))        
+    def add_anis(self, ku, anis_axis=(0,0,1),save_energy=False):
+        self.interactions.append(Anistropy(self.shape, self.dx, ku, anis_axis, save_energy))        
 
     def add_zeeman(self, H, save_energy=False): 
-        self.interactions.append(Zeeman(H, self.cellsize, save_energy))
+        self.interactions.append(Zeeman(self.shape, self.dx, H, save_energy))
         
     def remove_interaction(self, i_name):
         self.interactions = nn.ModuleList([
@@ -145,19 +151,19 @@ class Micro(nn.Module):
             res[i.__class__.__name__] = i.energy
         return res
     
-    def get_m(self,):
-        mx = torch.sin(self.angles[0]) * torch.cos(self.angles[1])
-        my = torch.sin(self.angles[0]) * torch.sin(self.angles[1])
-        mz = torch.cos(self.angles[0])
-        M = self.geo * torch.stack([mx,my,mz])
-        return M
+    def get_spin(self,):
+        m = self.geo * Spherical2Cartesian(self.spherical)
+        return m
+    
+    def get_mag(self,):
+        return self.Ms * self.get_spin
    
-    def loss(self, Ms=None, unit=const.eV):
+    def loss(self, unit=const.eV):
         loss_m = 0.
         if len(self.interactions) > 0:
-            m = self.get_m()        
+            spin = self.get_spin()        
             for i in self.interactions:
-                loss_m = loss_m + i(m, self.geo, Ms)
+                loss_m = loss_m + i(spin, self.Ms)
                 
         return 1/unit * loss_m
                 

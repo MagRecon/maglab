@@ -4,6 +4,8 @@ import torch
 import torch.nn.functional as F
 from .const import c_m
 import scipy.constants as const
+import warnings
+import numbers
 
 def get_lam(E):
     """Calculate the wavelength of an electron using the accelerating voltage.
@@ -43,7 +45,77 @@ def Cartesian2Spherical(m):
     theta = torch.arccos(m[2,])
     phi = torch.arctan2(m[1,], m[0])
     return torch.stack([theta, phi])
+
+def Spherical2Cartesian(p):
+    #n, theta, phi = p[0,], p[1,], p[2,]
+    theta, phi =  p[0,], p[1,]
+    vx = torch.sin(theta) * torch.cos(phi)
+    vy = torch.sin(theta) * torch.sin(phi)
+    vz = torch.cos(theta)
+    return torch.stack([vx, vy, vz])
+
+def to_tensor(x):
+    if isinstance(x, torch.Tensor):
+        x = x.detach().clone()
+    elif isinstance(x, np.ndarray):
+        x = torch.from_numpy(x)
+    else:
+        raise ValueError("Function `to_tensor` only accept torch.tensor or np.ndarray!")
+
+    return x.float()
+
+def init_scalar(v, shape):
+    if isinstance(v, numbers.Number):
+        v_t = v * torch.ones(shape)
+    elif isinstance(v, (np.ndarray, torch.Tensor)):
+        assert v.shape == shape, "Shape not match! Expect {}, got {} instead.".format(shape, v.shape)
+        v_t = to_tensor(v)
+    else:
+        raise ValueError("Function `init_scalar` only accept one of (Number, np.ndarray, torch.Tensor), got `{}` instead"
+                            .format(v.__class__.__name__))
+        
+    return v_t
+
+def tuple_to_vector(v:tuple, shape:tuple):
+    dims = len(v)
+    vec = np.zeros((dims, *shape))
+    for i in dims:
+        vec[i,] = v[i]
+    return vec
     
+def normalize_tensor(v, tol=1e-3):
+    v_copy = v.detach().clone()
+    n2 = torch.sum(v_copy**2, dim=0)
+    n = torch.sqrt(n2)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        v_new = v_copy / n
+    v_new[:, n<tol] = 0.
+        
+    return v_new 
+        
+
+def init_vector(v, shape, normalize=False):
+    # shape = (dim, nx, ny, nz)
+    if isinstance(v, tuple):
+        dims = len(v)
+        v_t = torch.zeros((dims, *shape))
+        for i in range(dims):
+            v_t[i,] = init_scalar(v[i], shape)
+
+    elif isinstance(v, (np.ndarray, torch.Tensor)):
+        assert v.shape == shape, "Shape not match! Expect {}, got {} instead.".format(shape, v.shape)
+        v_t = to_tensor(v_t)
+        
+    else:
+        raise ValueError("Function `init_vector` only accept one of (tuple, np.ndarray, torch.Tensor), got `{}` instead"
+                            .format(v.__class__.__name__))
+        
+    if normalize:
+        v_t = normalize_tensor(v_t)
+        
+    return v_t
+
 def padding_width(n, N):
     right = (N-n)//2
     return (N-n-right, right)

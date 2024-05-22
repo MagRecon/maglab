@@ -9,12 +9,12 @@ class MagToVec(nn.Module):
 
     Args:
         shape (tuple): shape of A: (nx,ny,nz)
-        cellsize : unit size of M
+        dx : unit size of M
     """
-    def __init__(self, shape, cellsize):
+    def __init__(self, shape, dx):
         super().__init__()
         self.shape = shape
-        c0 = 2*torch.pi/cellsize
+        c0 = 2*torch.pi/dx
         kx = c0 * torch.fft.fftfreq(shape[0]) 
         ky = c0 * torch.fft.fftfreq(shape[1]) 
         kz = c0 * torch.fft.rfftfreq(shape[2])
@@ -47,15 +47,15 @@ class MagToVec(nn.Module):
         A = const.mu_0 * self._irfft(Ak)
         return A
     
-def compute_curl(A, cellsize):
-    dAx_dy = (torch.roll(A[0], shifts=1, dims=1) - A[0]) / cellsize
-    dAx_dz = (torch.roll(A[0], shifts=1, dims=2) - A[0]) / cellsize
+def compute_curl(A, dx):
+    dAx_dy = (torch.roll(A[0], shifts=1, dims=1) - A[0]) / dx
+    dAx_dz = (torch.roll(A[0], shifts=1, dims=2) - A[0]) / dx
     
-    dAy_dx = (torch.roll(A[1], shifts=1, dims=0) - A[1]) / cellsize
-    dAy_dz = (torch.roll(A[1], shifts=1, dims=2) - A[1]) / cellsize
+    dAy_dx = (torch.roll(A[1], shifts=1, dims=0) - A[1]) / dx
+    dAy_dz = (torch.roll(A[1], shifts=1, dims=2) - A[1]) / dx
     
-    dAz_dx = (torch.roll(A[2], shifts=1, dims=0) - A[2]) / cellsize
-    dAz_dy = (torch.roll(A[2], shifts=1, dims=1) - A[2]) / cellsize
+    dAz_dx = (torch.roll(A[2], shifts=1, dims=0) - A[2]) / dx
+    dAz_dy = (torch.roll(A[2], shifts=1, dims=1) - A[2]) / dx
     
     # Compute curl as the cross product of the gradient and the vector field
     curl_x = dAz_dy - dAy_dz
