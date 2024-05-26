@@ -84,7 +84,6 @@ class DeMag(MicroField):
         self.save_energy = save_energy
         self.dV = dx**3
         
-        logger.debug("Initializing demag kernel...", end='')
         x,y,z = coords(2*nx+2, dx).cuda(), coords(2*ny+2, dx).cuda(), coords(2*nz+2, dx).cuda()
             
         X,Y,Z = torch.meshgrid(x,y,z,indexing='ij')
@@ -109,7 +108,6 @@ class DeMag(MicroField):
         N_demag = torch.fft.rfftn(N_demag, dim=(2,3,4))
         
         self.register_buffer('N_demag', N_demag)   
-        logger.debug("Done.")
         
         px1, px2 = padding_width(self.shape[0], 2*self.shape[0])    
         py1, py2 = padding_width(self.shape[1], 2*self.shape[1])    

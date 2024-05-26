@@ -90,20 +90,22 @@ class PhaseMapper(nn.Module):
         self.register_buffer('ker_y', ker_y)
         self.dx = dx
 
-    def __call__(self, m, theta, axis, Ms=1/mu_0):
+    def __call__(self, spin, theta, axis, Ms=1/mu_0):
         """Return phase.
 
         Args:
-            M : 3D magnetization tensor shaped (3,nx,ny,nz)
+            spin : 3D spin tensor shaped (3,nx,ny,nz)
             theta : projection angle in degree
             axis : rotation axis, which can be chosen from (0,1,2) representing x,y,and z respectively.
             dx: unit length in meter.
+            Ms(float or torch.Tensor): Saturation magnetization in A/m.
 
         Returns:
             phase(ndarray): 2D phase.
         """
         # dx:unit length of the cubic meshgrid
-        u, v = self.get_uv(m, theta, axis)
+        mag = Ms * spin
+        u, v = self.get_uv(mag, theta, axis)
         (nx,ny) = u.shape
         if self.fov > nx or self.fov > ny:
             u = padding_into(u, (self.fov,self.fov))
@@ -112,7 +114,7 @@ class PhaseMapper(nn.Module):
         u = self.dx * torch.fft.ifftshift(u,dim=(0,1))
         v = self.dx * torch.fft.ifftshift(v,dim=(0,1))
         fft_u, fft_v = torch.fft.rfft2(u), torch.fft.rfft2(v)
-        A_k = -1j * mu_0 * Ms * (fft_u*self.ker_y - fft_v*self.ker_x)
+        A_k = -1j * mu_0* (fft_u*self.ker_y - fft_v*self.ker_x)
         phi_k = c_m * A_k #beam along z+ direction
         phi = -1 * torch.fft.irfft2(phi_k) #beam along z- direction
         return torch.fft.fftshift(phi, dim=(0,1))

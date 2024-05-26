@@ -25,7 +25,7 @@ defocus = np.array([-1440000,-1210000,-1000000,-810000,-640000,-490000,-360000,-
 
 ids = [2,5,19,22]
 show_list([A_samples[i] for i in ids], titles=["{:.4e}nm".format(x*1e9) for x in defocus[ids]],
-           same_cb=False)
+           same_colorbar=False)
 plt.savefig("FresnelImage.png", dpi=100)
 plt.close()
 
@@ -73,11 +73,11 @@ for i in range(total_epoches):
 
 data = [x.detach().cpu().numpy() for x in [amp_sqrt_guess**2, phase_guess]]
 data[1] -= data[1].mean()
-show_list(data, titles=["amp", "phase"], same_cb=False)
+show_list(data, titles=["amp", "phase"], same_colorbar=False)
 plt.savefig("AD_TIE.png", dpi=100)
 plt.close()
 
 y1 = torch.stack([ltem(amp_sqrt_guess**2, phase_guess, df=df, spread=def_spr) for df in defocus[ids]]).detach().cpu().numpy()
 show_list([y1[i] for i in range(len(ids))], titles=["{:.4e}nm".format(x*1e9) for x in defocus[ids]],
-           same_cb=False)
+           same_colorbar=False)
 plt.savefig("predFresnelImage.png", dpi=100)

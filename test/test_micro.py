@@ -16,11 +16,14 @@ class TestMicro(unittest.TestCase):
         self.micro = None    
         
     def test_interactions(self):
-        self.micro.add_exch(1.3e-11)
-        self.micro.add_demag()
-        self.micro.add_anis(1e3)
-        self.micro.add_dmi(1e-5)
-        self.micro.add_zeeman((0,0,1e5))
+        self.micro.set_Ms(1e5)
+        self.micro.add_exch(1e-12, save_energy=True)
+        self.micro.add_dmi(1e-4, save_energy=True)
+        self.micro.add_anis(1e3, anis_axis=(0.3,0.4,0.5), save_energy=True)
+        self.micro.add_demag(save_energy=True)
+        self.micro.add_zeeman((0,0,1e3), save_energy=True)
+        self.micro.add_interfacial_dmi(2e-4, save_energy=True)
+        self.micro.init_m0((0,0,1.))
         
     def test_init_m0(self):
         self.micro.init_m0((0,0,1.))

@@ -1,9 +1,8 @@
 import logging
-logging.basicConfig(level=logging.INFO, 
-                    format='%(message)s')
 
-logging.basicConfig(level=logging.DEBUG, 
-                    format='%(name)s - %(message)s')
+# Suppress DEBUG messages from other packages
+logging.getLogger().setLevel(logging.INFO)
+logging.getLogger('maglab').setLevel(logging.DEBUG)
 
 from os.path import dirname
 

@@ -24,6 +24,22 @@ class MicroField(nn.Module):
         
 class Exch(MicroField):
     def __init__(self, shape, dx, A, pbc:str, save_energy=False):
+        """
+        Initializes a new instance of the class.
+
+        Args:
+            shape (tuple): The shape of the tensor.
+            dx (float): The spacing between adjacent elements in the tensor.
+            A (float or Tensor): The exchange constant. If a float, it is broadcasted to the shape of the tensor.
+            pbc (str): A string specifying the periodic boundary conditions.
+            save_energy (bool, optional): Whether to save the energy. Defaults to False.
+
+        Returns:
+            None
+
+        Raises:
+            None
+        """
         super().__init__()
         self.shape = shape
         self.A = nn.Parameter(init_scalar(A, self.shape), requires_grad=False)
@@ -55,7 +71,7 @@ class Exch(MicroField):
         return loss
     
     def get_params(self,):
-        return {'A': self.A.detach().copy()}
+        return {'A': self.A.detach().clone()}
     
 class DMI(MicroField):
     # positive D -> left chiral
@@ -90,7 +106,7 @@ class DMI(MicroField):
         return loss
     
     def get_params(self,):
-        return {'D': self.D.detach().copy()}
+        return {'D': self.D.detach().clone()}
     
 class InterfacialDMI(MicroField):
     # positive D -> left chiral
@@ -122,7 +138,7 @@ class InterfacialDMI(MicroField):
         return loss
     
     def get_params(self,):
-        return {'D': self.D.detach().copy()}
+        return {'D': self.D.detach().clone()}
     
     
 class Anistropy(MicroField):
@@ -146,8 +162,8 @@ class Anistropy(MicroField):
         return loss
     
     def get_params(self,):
-        return {'ku': self.ku.detach().copy(),
-                'anis_axis': self.anis_axis.detach().copy()}
+        return {'ku': self.ku.detach().clone(),
+                'anis_axis': self.anis_axis.detach().clone()}
     
 class Zeeman(MicroField):
     def __init__(self, shape, dx, H, save_energy=False):
@@ -167,7 +183,7 @@ class Zeeman(MicroField):
         return loss
     
     def get_params(self,):
-        return {'H': self.H.detach().copy()}
+        return {'H': self.H.detach().clone()}
     
     
     

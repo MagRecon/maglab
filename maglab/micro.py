@@ -18,12 +18,13 @@ class Micro(nn.Module):
     def __init__(self, nx, ny, nz, dx=5e-9, pbc:str=""):
         """Initiate Micro class.
 
-        Args:
-            nx,ny,nz (int): xyz dimensions.
-            dx (float): dx in meter.
-            pbc (str, optional): Periodic boundary condition flag.
-                If pbc in x-dim is required, set pbc="x". Defaults to "".
-        """
+    Args:
+        nx (int): Dimension in the x-axis.
+        ny (int): Dimension in the y-axis.
+        nz (int): Dimension in the z-axis.
+        dx (float, optional): Grid spacing in meters. Defaults to 5e-9.
+        pbc (str, optional): Periodic boundary condition flag. If periodic boundary condition in the x-dimension is required, set pbc="x". Defaults to "".
+    """
         super().__init__()
         self.shape = (nx, ny, nz)
         self._init_Ms()
@@ -44,13 +45,17 @@ class Micro(nn.Module):
     def m2geo(cls, mag, tol=1e-3):
         """Return geometry array by magnetization array.
 
-        Args:
-            mag (np.array or torch.Tensor): Magnetization array, with shape of (3,nx,ny,nz).
-            tol (float, optional): Critical value to judge if Ms is 0 or 1. Defaults to 1e-3.
+    This method converts a given magnetization array into a binary geometry array.
+    The geometry array indicates the presence (1) or absence (0) of magnetization
+    based on a specified tolerance.
 
-        Returns:
-            geometry(torch.Tensor): Binary array that contains the geometry infomation, with shape of (nx,ny,nz). 
-        """
+    Args:
+        mag (np.array or torch.Tensor): Magnetization array, with shape of (3, nx, ny, nz).
+        tol (float, optional): Critical value to judge if Ms is 0 or 1. Defaults to 1e-3.
+
+    Returns:
+        torch.Tensor: Binary array that contains the geometry information, with shape of (nx, ny, nz).
+    """
         mag = to_tensor(mag)
         mag.requires_grad = False
         
@@ -74,10 +79,18 @@ class Micro(nn.Module):
         if isinstance(state, str):
             state = torch.load(state)
         
-        nx, ny, nz = state['shape']
-        micro = cls(nx, ny, nz, state['dx'], state['pbc'])
-        micro.init_m0(state['spherical'])
-        micro.set_Ms = state['Ms']
+        if 'geo' in state:
+            geo = state['geo']
+            nx, ny, nz = geo.shape
+            micro = cls(nx, ny, nz, state['cellsize'])
+            micro.set_Ms(state['Ms']*geo)
+            micro.init_m0(state['angles'])
+        else:
+            nx, ny, nz = state['shape']
+            micro = cls(nx, ny, nz, state['dx'], state['pbc'])
+            micro.set_Ms(state['Ms'])
+            micro.init_m0(state['spherical'])
+
 
         if init_interactions :
             interactions = state['interactions']

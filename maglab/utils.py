@@ -27,7 +27,7 @@ def show(img, **kwargs):
     plt.colorbar()
     return ax
     
-def show_list(fs, same_cb=True, cutoff=0, figsize=(-1, 5), titles=[], rows=1, **kwargs):
+def show_list(fs, same_colorbar=True, cutoff=0, figsize=(-1, 5), titles=[], rows=1, **kwargs):
     l = len(fs)
     if l == 1:
         axes = plt.imshow(fs[0].T, origin='lower')
@@ -56,7 +56,7 @@ def show_list(fs, same_cb=True, cutoff=0, figsize=(-1, 5), titles=[], rows=1, **
         else:
             axes_index = (i // columns, i%columns)
             
-        if same_cb:
+        if same_colorbar:
             im = ax[axes_index].imshow(fs[i][s].T, vmax=v1, vmin=v2, origin='lower', **kwargs)
         else:
             im = ax[axes_index].imshow(fs[i][s].T, origin='lower', **kwargs)

@@ -1,61 +1,88 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
+
 import scipy.constants as const
-from .helper import padding_width
+from .helper import padding_into
+import logging
+
+logger = logging.getLogger(__name__)
+
+def m2A(m, Ms, dx, shape=()):
+    if len(shape) == 0:
+        shape = m.shape[1:]
+    converter = MagToVec(*shape, dx)
+    A = converter(m, Ms)
+    return A
 
 class MagToVec(nn.Module):
-    """Calculate vector potential A from magnetization M.
+    """
+    Initialize the MagToVec class.
 
     Args:
-        shape (tuple): shape of A: (nx,ny,nz)
-        dx : unit size of M
+        shape (tuple): The shape of the output vector potential A, which should be (nx, ny, nz).
+        dx (float): The unit size of the magnetization M.
+
+    Attributes:
+        shape (tuple): The shape of the output vector potential A.
+        kernel (torch.Tensor): The Fourier transform of the kernel used in the calculation.
     """
-    def __init__(self, shape, dx):
+    
+    def __init__(self, nx,ny,nz,dx):
         super().__init__()
-        self.shape = shape
-        c0 = 2*torch.pi/dx
-        kx = c0 * torch.fft.fftfreq(shape[0]) 
-        ky = c0 * torch.fft.fftfreq(shape[1]) 
-        kz = c0 * torch.fft.rfftfreq(shape[2])
-        KX,KY,KZ= torch.meshgrid(kx,ky,kz, indexing='ij')
-        K2 = KX**2+KY**2+KZ**2
-        ker = -1j * torch.stack([KX/K2,KY/K2,KZ/K2], axis=0)
-        ker[:,0,0,0] = 0.
-        self.register_buffer('kernel',  ker)
-        
-    def _rfft(self,x):
-        x = torch.fft.ifftshift(x, dim=(1,2,3))
-        x = torch.fft.rfftn(x, dim=(1,2,3))
-        return x
+        self._init_kernel(nx,ny,nz,dx,)
+        self.shape = (nx,ny,nz)
+        self.dx = dx
     
-    def _irfft(self,x):
-        x = torch.fft.irfftn(x, dim=(1,2,3))
-        x = torch.fft.fftshift(x, dim=(1,2,3))
-        return x
+    def _init_kernel(self, nx,ny,nz,dx):
+        # r-grid kernel to calculate vector potential
+        x = dx * torch.fft.fftfreq(nx) * nx
+        y = dx * torch.fft.fftfreq(ny) * ny
+        z = dx * torch.fft.fftfreq(nz) * nz
+        X,Y,Z = torch.meshgrid(x,y,z, indexing='ij')
+        R3 = torch.sqrt(X**2+Y**2+Z**2)**3 
+        ker = dx**3 * torch.stack([X/R3, Y/R3, Z/R3]) / (4 * np.pi)
+        ker[:,0,0,0] = 0
         
-    def __call__(self, M, Ms=None):
-        if Ms:
-            M = M * Ms
-        (_,nx,ny,nz) = M.shape
-        px1, px2 = padding_width(nx, self.shape[0])
-        py1, py2 = padding_width(ny, self.shape[1])
-        pz1, pz2 = padding_width(nz, self.shape[2])
-        M = F.pad(M, (pz1,pz2,py1,py2,px1,px2), 'constant', 0.)
-        M = self._rfft(M)
-        Ak = torch.cross(M, self.kernel, axis=0)
-        A = const.mu_0 * self._irfft(Ak)
+        ker = torch.fft.fftshift(ker, dim=(1,2,3))
+        ker = padding_into(ker, (3,2*nx,2*ny,2*nz))
+        ker = torch.fft.ifftshift(ker, dim=(1,2,3))
+        ker = torch.fft.fftn(ker, dim=(1,2,3))
+        
+        self.register_buffer('kernel', ker)
+        
+    def conv_q(self, mag):
+        mag = torch.fft.ifftshift(mag, dim=(1,2,3))
+        mag_q = torch.fft.fftn(mag, dim=(1,2,3))
+        logger.debug("kernel.shape:{}".format(self.kernel.shape))
+        logger.debug("mag_q.shape:{}".format(mag_q.shape))
+        logger.debug("kernel.dtype:{}".format(self.kernel.dtype))
+        logger.debug("mag_q.dtype:{}".format(mag_q.dtype))
+        A_k = torch.cross(mag_q, self.kernel, dim=0)
+        A = torch.fft.ifftn(A_k, dim=(1,2,3))
+        A = torch.fft.fftshift(A, dim=(1,2,3))
         return A
+        
+    def __call__(self, mag, Ms):
+        mag = mag.float()
+        device = mag.device
+        self.to(device)
+        nx,ny,nz = self.shape
+        mag = padding_into(mag, (3,2*nx,2*ny,2*nz))
+        A = const.mu_0 * Ms * self.conv_q(mag) 
+        A = padding_into(A, (3,*self.shape))
+        return A.real
+
+def curl(A, dx):
+    dAx_dy = torch.gradient(A[0], dim=1)[0] / dx
+    dAx_dz = torch.gradient(A[0], dim=2)[0] / dx
     
-def compute_curl(A, dx):
-    dAx_dy = (torch.roll(A[0], shifts=1, dims=1) - A[0]) / dx
-    dAx_dz = (torch.roll(A[0], shifts=1, dims=2) - A[0]) / dx
+    dAy_dx = torch.gradient(A[1], dim=0)[0] / dx
+    dAy_dz = torch.gradient(A[1], dim=2)[0] / dx
     
-    dAy_dx = (torch.roll(A[1], shifts=1, dims=0) - A[1]) / dx
-    dAy_dz = (torch.roll(A[1], shifts=1, dims=2) - A[1]) / dx
-    
-    dAz_dx = (torch.roll(A[2], shifts=1, dims=0) - A[2]) / dx
-    dAz_dy = (torch.roll(A[2], shifts=1, dims=1) - A[2]) / dx
+    dAz_dx = torch.gradient(A[2], dim=0)[0] / dx
+    dAz_dy = torch.gradient(A[2], dim=1)[0] / dx
     
     # Compute curl as the cross product of the gradient and the vector field
     curl_x = dAz_dy - dAy_dz
