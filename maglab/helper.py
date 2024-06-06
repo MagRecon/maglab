@@ -40,19 +40,27 @@ def get_induction(phase, dx):
     return np.array([Bx, By])
 
 def Cartesian2Spherical(m):
-    norm = torch.sqrt(m[0,]**2 + m[1,]**2 + m[2,]**2)
-    m = m/(norm+1e-30)
+    m = m.clone()
+    rho = torch.sqrt(m[0,]**2 + m[1,]**2 + m[2,]**2)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        m = m/rho
+        m[:,rho==0.] = 0.
     theta = torch.arccos(m[2,])
-    phi = torch.arctan2(m[1,], m[0])
-    return torch.stack([theta, phi])
+    phi = torch.arctan2(m[1,], m[0,])
+    return torch.stack([rho, theta, phi])
 
 def Spherical2Cartesian(p):
-    #n, theta, phi = p[0,], p[1,], p[2,]
-    theta, phi =  p[0,], p[1,]
+    if p.shape[0] == 3:
+        rho, theta, phi =  p[0,], p[1,], p[2,]
+    else:
+        theta, phi = p[0,], p[1,]
+        rho = 1.
+        
     vx = torch.sin(theta) * torch.cos(phi)
     vy = torch.sin(theta) * torch.sin(phi)
     vz = torch.cos(theta)
-    return torch.stack([vx, vy, vz])
+    return rho * torch.stack([vx, vy, vz])
 
 def to_tensor(x):
     if isinstance(x, torch.Tensor):
@@ -132,6 +140,12 @@ def padding_into(x, new_shape):
         pad_dims.append(w2)
         
     return F.pad(x, tuple(pad_dims), 'constant', 0)
+
+def center_padding(x, new_shape):
+    x = torch.fft.fftshift(x)
+    x = padding_into(x, new_shape)
+    x = torch.fft.ifftshift(x)
+    return x
 
 def pad(x, dims, axes):
     if not len(dims) == len(axes):

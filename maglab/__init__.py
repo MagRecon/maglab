@@ -24,6 +24,7 @@ from .phasemapper import *
 from .micro import *
 from .ltem import *
 from .tie import *
+from .coloring import *
 
 
 __all__ = []

@@ -116,7 +116,8 @@ class Micro(nn.Module):
             x = to_tensor(x)
             if x.shape[0] == 3:
                 x = Cartesian2Spherical(x)
-        self.spherical.data.copy_(x)
+                
+        self.spherical.data.copy_(x[1:,])
     
     def init_m0_random(self, seed=None):
         if seed:
