@@ -48,8 +48,8 @@ class Exch(MicroField):
         self.save_energy = save_energy
         self._init_pbc(pbc)
         
-    def forward(self, x, Ms):   
-        x = F.pad(x, self.padding, 'constant', 0)
+    def forward(self, spin, Ms):   
+        x = F.pad(spin, self.padding, 'constant', 0)
         Ms = F.pad(Ms, self.padding, 'constant', 0)
         geo = Ms > 1e-3 #tolerence
             
@@ -64,10 +64,11 @@ class Exch(MicroField):
         
         E = -self.A * self.dx * E
         
+        loss = torch.mean(E)
         if self.save_energy:
             self.E = E.detach().clone()
+            self.field = torch.autograd.grad(loss, spin, create_graph=True)[0].detach().clone()
                 
-        loss = torch.mean(E)
         return loss
     
     def get_params(self,):
@@ -84,8 +85,8 @@ class DMI(MicroField):
         self.save_energy = save_energy
         self._init_pbc(pbc)
         
-    def forward(self, x, Ms):
-        x = F.pad(x, self.padding, 'constant', 0)
+    def forward(self, spin, Ms):
+        x = F.pad(spin, self.padding, 'constant', 0)
             
         d1 = torch.cross(x, torch.roll(x, shifts=(1), dims=(1)), dim=0)[0,]
         d2 = -1 * torch.cross(x, torch.roll(x, shifts=(-1), dims=(1)), dim=0)[0,]
@@ -99,10 +100,11 @@ class DMI(MicroField):
         
         E = 0.5 * self.D * self.dx2 * E    
         
+        loss = torch.mean(E)
         if self.save_energy:
             self.E = E.detach().clone()
+            self.field = torch.autograd.grad(loss, spin, create_graph=True)[0].detach().clone()
             
-        loss = torch.mean(E)
         return loss
     
     def get_params(self,):
@@ -118,8 +120,8 @@ class InterfacialDMI(MicroField):
         self.save_energy = save_energy
         self._init_pbc(pbc)
         
-    def forward(self, x, Ms):
-        x = F.pad(x, self.padding, 'constant', 0)
+    def forward(self, spin, Ms):
+        x = F.pad(spin, self.padding, 'constant', 0)
             
         d1 = torch.cross(x, torch.roll(x, shifts=(1), dims=(1)), dim=0)[1,]
         d2 = -1 * torch.cross(x, torch.roll(x, shifts=(-1), dims=(1)), dim=0)[1,]
@@ -131,10 +133,11 @@ class InterfacialDMI(MicroField):
         
         E = 0.5 * self.D * self.dx2 * E    
         
+        loss = torch.mean(E)
         if self.save_energy:
             self.E = E.detach().clone()
+            self.field = torch.autograd.grad(loss, spin, create_graph=True)[0].detach().clone()
             
-        loss = torch.mean(E)
         return loss
     
     def get_params(self,):
@@ -150,15 +153,16 @@ class Anistropy(MicroField):
         self.anis_axis = nn.Parameter(init_vector(anis_axis, self.shape, normalize=True), requires_grad=False)
         self.save_energy = save_energy
         
-    def forward(self, x, Ms, ):
+    def forward(self, spin, Ms, ):
         geo = Ms > 1e-3
-        mh = torch.sum(x*self.anis_axis, axis=0)
+        mh = torch.sum(spin*self.anis_axis, axis=0)
         E = self.ku * self.dV * (1 - torch.pow(mh, 2)) * geo
         
+        loss = torch.mean(E)
         if self.save_energy:
             self.E = E.detach().clone()
-            
-        loss = torch.mean(E)        
+            self.field = torch.autograd.grad(loss, spin, create_graph=True)[0].detach().clone()
+                    
         return loss
     
     def get_params(self,):
@@ -173,13 +177,13 @@ class Zeeman(MicroField):
         self.H = nn.Parameter(init_vector(H, self.shape), requires_grad=False)
         self.save_energy = save_energy
 
-    def forward(self, x, Ms):   
-        E = -1 * const.mu_0 * Ms * self.dV * torch.sum(x*self.H, axis=0)
-        
+    def forward(self, spin, Ms):   
+        E = -1 * const.mu_0 * Ms * self.dV * torch.sum(spin*self.H, axis=0)
+        loss = torch.mean(E)
         if self.save_energy:
             self.E = E.detach().clone()
+            self.field = self.H.detach().clone()
             
-        loss = torch.mean(E)
         return loss
     
     def get_params(self,):

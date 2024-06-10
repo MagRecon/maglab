@@ -113,6 +113,7 @@ class DeMag(MicroField):
         py1, py2 = padding_width(self.shape[1], 2*self.shape[1])    
         pz1, pz2 = padding_width(self.shape[2], 2*self.shape[2])  
         self.padding_dims = (pz1,pz2,py1,py2,px1,px2)
+        self.crop_dims = tuple(-1*x for x in self.padding_dims)
         
     def _rfft(self, x):
         x = torch.fft.ifftshift(x, dim=(1,2,3))
@@ -124,6 +125,18 @@ class DeMag(MicroField):
         x = torch.fft.fftshift(x, dim=(1,2,3))
         return x
     
+    def effective_field(self, M):
+        M = F.pad(M, self.padding_dims, 'constant', 0.)
+        mk = self._rfft(M)
+        hk_x = torch.sum(self.N_demag[0,] * mk, axis=0)
+        hk_y = torch.sum(self.N_demag[1,] * mk, axis=0)
+        hk_z = torch.sum(self.N_demag[2,] * mk, axis=0)
+        hk = torch.stack([hk_x, hk_y, hk_z], axis=0)
+        H = self._irfft(hk)
+        H = F.pad(H, self.crop_dims)
+        M = F.pad(M, self.crop_dims)
+        return H, M
+    
     # input should be m*Ms    
     def forward(self, m, Ms):
         M = m * Ms   
@@ -131,21 +144,13 @@ class DeMag(MicroField):
             if not M.shape[i+1] == self.shape[i]:
                 raise ValueError("DeMag: Shape not match! Need {}, but got {} instead".format(self.shape, M.shape[1:]))
             
-        M = F.pad(M, self.padding_dims, 'constant', 0.)
-        
-        mk = self._rfft(M)
-        hk_x = torch.sum(self.N_demag[0,] * mk, axis=0)
-        hk_y = torch.sum(self.N_demag[1,] * mk, axis=0)
-        hk_z = torch.sum(self.N_demag[2,] * mk, axis=0)
-        hk = torch.stack([hk_x, hk_y, hk_z], axis=0)
-        H = self._irfft(hk)
+        H,M = self.effective_field(M)
         
         E = -1/2 * const.mu_0 * self.dV * torch.sum(H*M, axis=0)
         
-        E = F.pad(E, tuple(-1*x for x in self.padding_dims))
-        
         if self.save_energy:
             self.E = E.detach().clone()
+            self.field = H.detach().clone()
             
         loss = torch.mean(E)
         return loss

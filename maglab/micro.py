@@ -165,6 +165,16 @@ class Micro(nn.Module):
             res[i.__class__.__name__] = i.energy
         return res
     
+    def effective_field(self, interaction):
+        if isinstance(interaction, DeMag) or isinstance(interaction, Zeeman):
+            return interaction.field
+        
+        nxyz = self.shape[0] * self.shape[1] * self.shape[2]
+        dV = self.dx**3
+        ms_inv = -1/(const.mu_0 * self.Ms)
+        ms_inv[self.geo == 0] = 0
+        return nxyz / dV * ms_inv * interaction.field
+    
     def get_spin(self,):
         m = self.geo * Spherical2Cartesian(self.spherical)
         return m

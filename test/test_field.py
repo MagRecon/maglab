@@ -32,18 +32,21 @@ class test1(unittest.TestCase):
     def maxl1(self, x):
         return torch.max(torch.abs(x)).item()
     
-    def compare_energy(self, m0, Ms, e_jumag, pbc=""):
+    def compare_energy(self, m0, Ms, e_jumag, field_jumag, pbc=""):
         micro = self.create_micro(m0, Ms, pbc)
         micro.loss()
-            
-        e = np.stack([micro.interactions[i].E.detach().cpu().numpy() \
-                      for i in range(len(micro.interactions))])
-        
-        energy_diff = e_jumag - e
+
         for (i, interaction) in enumerate(micro.interactions):
             energy = interaction.E.detach().cpu().numpy()
             energy_diff = e_jumag[i,] - energy
             error = self.maxl1(energy_diff) / self.maxl1(e_jumag[i,])
+            print(interaction.__class__.__name__, error)
+            self.assertTrue(error < 1e-5)
+
+        for (i, interaction) in enumerate(micro.interactions):
+            field = micro.effective_field(interaction).detach().cpu().numpy()
+            field_diff = field_jumag[i,] - field
+            error = self.maxl1(field_diff) / self.maxl1(field_jumag[i,])
             print(interaction.__class__.__name__, error)
             self.assertTrue(error < 1e-5)
         
@@ -52,19 +55,22 @@ class test1(unittest.TestCase):
         m0 = np.load("dataset/m0.npy")
         Ms = 8e5 * maglab.Micro.m2geo(m0)
         e_jumag = torch.from_numpy(np.load("dataset/energy.npy"))
-        self.compare_energy(m0, Ms, e_jumag)
+        field_jumag = torch.from_numpy(np.load("dataset/field.npy"))
+        self.compare_energy(m0, Ms, e_jumag, field_jumag)
     
     def test_cylinder(self):
         m0 = np.load("dataset/m0_cylinder.npy")
         Ms = 8e5 * maglab.Micro.m2geo(m0)
         e_jumag = torch.from_numpy(np.load("dataset/energy_cylinder.npy"))
-        self.compare_energy(m0, Ms, e_jumag)
+        field_jumag = torch.from_numpy(np.load("dataset/field_cylinder.npy"))
+        self.compare_energy(m0, Ms, e_jumag, field_jumag)
         
     def test_pbc(self):
         m0 = np.load("dataset/m0.npy")
         Ms = 8e5 * maglab.Micro.m2geo(m0)
         e_jumag = torch.from_numpy(np.load("dataset/energy_pbc_xy.npy"))
-        self.compare_energy(m0, Ms, e_jumag, pbc="xy")
+        field_jumag = torch.from_numpy(np.load("dataset/field_pbc_xy.npy"))
+        self.compare_energy(m0, Ms, e_jumag, field_jumag, "xy")
         
 if __name__ == '__main__':
     unittest.main()

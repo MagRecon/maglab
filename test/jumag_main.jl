@@ -1,4 +1,4 @@
-using JuMag
+using MicroMagnetic
 using NPZ
 using Printf
 
@@ -17,7 +17,7 @@ function gen_energy(;pbc="", cylinder=false)
     mesh = FDMesh(nx=nx,ny=ny,nz=nz,dx=1e-9,dy=1e-9,dz=1e-9, pbc=pbc)
     sim = Sim(mesh)
     if cylinder
-        geo = JuMag.Cylinder(radius=5e-9)
+        geo = MicroMagnetic.Cylinder(radius=5e-9)
         set_Ms(sim, geo, 8e5 )
     else
         set_Ms(sim, 8e5)
@@ -33,21 +33,26 @@ function gen_energy(;pbc="", cylinder=false)
 
     num = length(sim.interactions)
     all_energy = zeros(num,nx,ny,nz)
+    all_field = zeros(num,3,nx,ny,nz)
     for (i, interaction) in enumerate(sim.interactions)
-        JuMag.effective_field(interaction, sim, sim.spin, 0.0)
+        MicroMagnetic.effective_field(interaction, sim, sim.spin, 0.0)
         all_energy[i,:,:,:] = reshape(interaction.energy, (nx,ny,nz))
+        all_field[i,:,:,:,:] = reshape(interaction.field, (3,nx,ny,nz))
     end
-    geo = sim.mu0_Ms / (8e5*JuMag.mu_0)
-    return all_energy, reshape(sim.spin, (3,nx,ny,nz)), reshape(geo, (nx,ny,nz))
+    geo = sim.mu0_Ms / (8e5*MicroMagnetic.mu_0)
+    return all_energy, all_field, reshape(sim.spin, (3,nx,ny,nz)), reshape(geo, (nx,ny,nz))
 end
 
-e, m, ms = gen_energy(pbc="")
-npzwrite("dataset/energy.npy", e)
+E, H, m, ms = gen_energy(pbc="")
+npzwrite("dataset/energy.npy", E)
+npzwrite("dataset/field.npy", H)
 npzwrite("dataset/m0.npy", m)
 
-e, m, ms = gen_energy(pbc="", cylinder=true)
-npzwrite("dataset/energy_cylinder.npy", e)
+E, H, m, ms = gen_energy(pbc="", cylinder=true)
+npzwrite("dataset/energy_cylinder.npy", E)
+npzwrite("dataset/field_cylinder.npy", H)
 npzwrite("dataset/m0_cylinder.npy", m)
 
-e, m, ms = gen_energy(pbc="xy")
-npzwrite("dataset/energy_pbc_xy.npy", e)
+E, H, m, ms = gen_energy(pbc="xy")
+npzwrite("dataset/energy_pbc_xy.npy", E)
+npzwrite("dataset/field_pbc_xy.npy", H)
