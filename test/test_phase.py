@@ -64,7 +64,7 @@ class Test(unittest.TestCase):
         
     def test_phase(self):
         phi_simulate = self.phasemapper(self.m, theta=0., axis=0, Ms=self.Ms)
-        phi_simulate = phi_simulate.detach().cpu().numpy()[self.fov//2:-self.fov//2, self.fov//2:-self.fov//2]
+        phi_simulate = phi_simulate.detach().cpu().numpy()[0,self.fov//2:-self.fov//2, self.fov//2:-self.fov//2]
         phi_simulate = -1 * phi_simulate # we are using beam along z- direction, but the theory solution is using z+.
         phase_A = self.phase_from_A()
         show_list([self.phi_theory, 
@@ -102,6 +102,7 @@ class Test(unittest.TestCase):
         
         show_list([amp.numpy(), self.phi_theory, image], titles=["Amp", "Phase", "Image"], same_colorbar=False)
         plt.savefig("LTEM_image.png", dpi=100)
+        plt.close()
         
         
         

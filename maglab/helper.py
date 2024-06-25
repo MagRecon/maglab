@@ -62,6 +62,29 @@ def Spherical2Cartesian(p):
     vz = torch.cos(theta)
     return rho * torch.stack([vx, vy, vz])
 
+def SphericalUnitVectors(spherical):
+    theta, phi = spherical[0,], spherical[1,]
+    st, ct = torch.sin(theta), torch.cos(theta)
+    sp, cp = torch.sin(phi), torch.cos(phi)
+    
+    e_rho = torch.stack([st * cp, st * sp, ct])
+    e_theta = torch.stack([ct * cp, ct * sp, -1*st])
+    e_phi =  torch.stack([-1*sp, cp, torch.zeros_like(sp)])
+    return e_rho, e_theta, e_phi
+
+def cartesian_grad(spherical):
+    with torch.no_grad():
+        spherical_grad = spherical.grad
+        theta, phi = spherical[0,], spherical[1,]
+        e_rho, e_theta, e_phi = SphericalUnitVectors(spherical) #(3,nx,ny,nz)
+        grad_theta = spherical_grad[0,].unsqueeze(0).expand_as(e_theta) #(nx,ny,nz)
+        grad_phi = spherical_grad[1,].unsqueeze(0).expand_as(e_theta)
+        grad_m = grad_theta * e_theta + torch.sin(theta) * grad_phi * e_phi
+        return grad_m
+    
+def l2_vector(m):
+    return torch.sqrt(torch.sum(m**2, dim=0))
+
 def to_tensor(x):
     if isinstance(x, torch.Tensor):
         x = x.detach().clone()

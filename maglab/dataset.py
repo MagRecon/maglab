@@ -164,8 +164,10 @@ class PhaseLoader(DataLoader):
         super().__init__(*args, **kwargs)
         
     def _default_collate_fn(self, batch):
-        data = torch.stack([x.data.unsqueeze(0) for x in batch])
-        mask = torch.stack([x.mask.unsqueeze(0) for x in batch])
+        # data = torch.stack([x.data.unsqueeze(0) for x in batch])
+        # mask = torch.stack([x.mask.unsqueeze(0) for x in batch])
+        data = torch.stack([x.data for x in batch])
+        mask = torch.stack([x.mask for x in batch])
         ang = [x.tilt_angle for x in batch]
         axis = [x.tilt_axis for x in batch]
         return data,mask,ang,axis

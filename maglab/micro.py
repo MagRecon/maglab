@@ -1,8 +1,7 @@
 import torch
 import torch.nn as nn
 import scipy.constants as const
-import numpy as np
-import numbers
+import os
 from .microfields import Exch, DMI, Anistropy, Zeeman, InterfacialDMI
 from .demag import DeMag
 from .helper import Cartesian2Spherical, Spherical2Cartesian, to_tensor, init_scalar
@@ -72,6 +71,7 @@ class Micro(nn.Module):
         state['spherical'] = self.spherical.detach().clone()
         state['pbc'] = self.pbc
         state['interactions'] = self.get_interactions()
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
         torch.save(state, file_path)
     
     @classmethod
@@ -112,12 +112,13 @@ class Micro(nn.Module):
             m = torch.zeros((3,*self.shape))
             m[0],m[1],m[2] = x[0],x[1],x[2]
             x = Cartesian2Spherical(m)
-        else:
+            self.spherical.data.copy_(x[1:,])
+        elif x.shape[0] == 3:
             x = to_tensor(x)
-            if x.shape[0] == 3:
-                x = Cartesian2Spherical(x)
-                
-        self.spherical.data.copy_(x[1:,])
+            x = Cartesian2Spherical(x)
+            self.spherical.data.copy_(x[1:,])
+        elif x.shape[0] == 2:
+            self.spherical.data.copy_(x)
     
     def init_m0_random(self, seed=None):
         if seed:

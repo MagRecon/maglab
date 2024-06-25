@@ -42,10 +42,10 @@ def spin_to_hsv(v):
     #     value = (vz/n + 1.) / 2
         
     theta = np.arctan2(vz, np.sqrt(vx**2 + vy**2))
-    #value = np.where(theta<0, 1-1/(1+np.exp(10*theta*2/np.pi+5)), 1)#sigmoid
-    #sat = np.where(theta>0, 1-1/(1+np.exp(-10*theta*2/np.pi+5)), 1)#sigmoid
-    value = np.where(theta < 0, np.cos(2 * theta) / 2 + 1 / 2, 1)
-    sat = np.where(theta > 0, np.cos(2 * theta) / 2 + 1 / 2, 1)
+    value = np.where(theta<0, 1-1/(1+np.exp(10*theta*2/np.pi+5)), 1)#sigmoid
+    sat = np.where(theta>0, 1-1/(1+np.exp(-10*theta*2/np.pi+5)), 1)#sigmoid
+    # value = np.where(theta < 0, np.cos(2 * theta) / 2 + 1 / 2, 1)
+    # sat = np.where(theta > 0, np.cos(2 * theta) / 2 + 1 / 2, 1)
     
     hue[n==0.] = 0.    
     sat[n==0.] = 0.

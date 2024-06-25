@@ -7,6 +7,7 @@ import numpy as np
 import warnings
 from .const import c_m, mu_0
 from .helper import padding_into
+import numbers
 
 __all__ = ['PhaseMapper', 'rotation_3d', 'projection']
 
@@ -102,17 +103,27 @@ class PhaseMapper(nn.Module):
         Returns:
             phase(ndarray): 2D phase.
         """
-        # dx:unit length of the cubic meshgrid
-        u, v = self.get_uv(m, theta, axis)
-        (nx,ny) = u.shape
-        if self.fov > nx or self.fov > ny:
-            u = padding_into(u, (self.fov,self.fov))
-            v = padding_into(v, (self.fov,self.fov))
+        if isinstance(theta, numbers.Number):
+            theta = [theta]
+            axis = [axis]
             
-        u = self.dx * torch.fft.ifftshift(u,dim=(0,1))
-        v = self.dx * torch.fft.ifftshift(v,dim=(0,1))
-        fft_u, fft_v = torch.fft.rfft2(u), torch.fft.rfft2(v)
-        A_k = -1j * mu_0 * Ms * (fft_u*self.ker_y - fft_v*self.ker_x)
-        phi_k = c_m * A_k #beam along z+ direction
-        phi = -1 * torch.fft.irfft2(phi_k) #beam along z- direction
-        return torch.fft.fftshift(phi, dim=(0,1))
+        N = len(theta)
+        uvs = []
+        for i in range(N):
+            u, v = self.get_uv(m, theta[i], axis[i])
+            uv = torch.stack((u,v), dim=0)
+            uvs.append(uv)
+        uvs = self.dx * torch.stack(uvs, dim=0)
+        
+        (N,_,nx,ny) = uvs.shape
+        if self.fov > nx or self.fov > ny:
+            uvs = padding_into(uvs, (N, 2, self.fov,self.fov))
+        
+        uvs =  torch.fft.ifftshift(uvs,dim=(2,3))
+        uvs_q = torch.fft.rfftn(uvs, dim=(2,3))
+        ker_x = self.ker_x.unsqueeze(0).repeat(N,1,1)
+        ker_y = self.ker_y.unsqueeze(0).repeat(N,1,1)
+        A_k = -1j * mu_0 * Ms * (uvs_q[:,0,:,:]*ker_y - uvs_q[:,1,:,:]*ker_x) #(N,1,nx,ny//2)
+        phi_k = c_m * A_k[:,:,:] #beam along z+ direction
+        phi = -1 * torch.fft.irfftn(phi_k, dim=(1,2)) #beam along z- direction
+        return torch.fft.fftshift(phi, dim=(1,2))
