@@ -215,3 +215,6 @@ def crop(x, dims, axes):
         tem = tem[n1:n2,]
         tem = np.moveaxis(tem, 0, axis)
     return tem
+
+def cross_correlation(x, y):
+    return torch.fft.ifft2(torch.fft.fft2(x) * torch.fft.fft2(y).conj())

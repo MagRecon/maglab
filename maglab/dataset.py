@@ -6,6 +6,7 @@ import logging
 import math
 
 from .preprocess import add_Gaussian
+from .alignment import shift_array
 
 logger = logging.getLogger(__name__)
 
@@ -27,13 +28,21 @@ class PhaseMap(torch.nn.Module):
         self.tilt_angle = float(tilt_angle)
         self.tilt_axis = tilt_axis
     
+    @property
+    def axis(self):
+        return self.tilt_axis
+    
+    @property
+    def angle(self):
+        return self.tilt_angle
+    @classmethod
     def _tensor(self, array):
         if isinstance(array, torch.Tensor):
             array = array.detach().cpu()
         elif isinstance(array, np.ndarray):
             array = torch.from_numpy(array)
         else:
-            raise ValueError("Need a torch.Tensor or numpy.ndarray.")
+            raise ValueError("Need a torch.Tensor or numpy.ndarray, got {} instead".format(type(array)))
         
         if len(array.shape) == 3 and array.shape[0] == 1:
             array = array[0,]
@@ -44,15 +53,23 @@ class PhaseMap(torch.nn.Module):
         
         return array.float()
     
+    def shift(self, shifts):
+        self.data = shift_array(self.data, shifts)
+        self.mask = shift_array(self.mask, shifts)
+    
     def zoom(self, nx, ny):
         (x,y) = self.data.shape
         data = zoom(self.data, (nx/x, ny/y), order=2)
         (x,y) = self.mask.shape
         mask = zoom(self.mask, (nx/x, ny/y), order=0)
-        return PhaseMap(data, mask, self.tilt_angle, self.tilt_axis)
+        return PhaseMap(data, self.tilt_angle, self.tilt_axis, mask=mask)
        
     def remove_background(self, ):
-        data = self.data - torch.mean(self.data)
+        mask_data = self.data * self.mask
+        background = torch.sum(mask_data) / torch.sum(self.mask)
+        data = self.data.clone()
+        data[self.mask>0.1] -= background
+        data[self.mask<=0.1] = 0.
         return PhaseMap(data, self.tilt_angle, self.tilt_axis, mask=self.mask)
     
     def add_Gaussian(self, mean=0., sigma=0.05, by='max_diff', seed=None):

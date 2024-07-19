@@ -110,7 +110,7 @@ class PhaseMapper(nn.Module):
         N = len(theta)
         uvs = []
         for i in range(N):
-            u, v = self.get_uv(m, theta[i], axis[i])
+            u, v = self.get_uv(m*Ms, theta[i], axis[i])
             uv = torch.stack((u,v), dim=0)
             uvs.append(uv)
         uvs = self.dx * torch.stack(uvs, dim=0)
@@ -123,7 +123,7 @@ class PhaseMapper(nn.Module):
         uvs_q = torch.fft.rfftn(uvs, dim=(2,3))
         ker_x = self.ker_x.unsqueeze(0).repeat(N,1,1)
         ker_y = self.ker_y.unsqueeze(0).repeat(N,1,1)
-        A_k = -1j * mu_0 * Ms * (uvs_q[:,0,:,:]*ker_y - uvs_q[:,1,:,:]*ker_x) #(N,1,nx,ny//2)
+        A_k = -1j * mu_0 * (uvs_q[:,0,:,:]*ker_y - uvs_q[:,1,:,:]*ker_x) #(N,1,nx,ny//2)
         phi_k = c_m * A_k[:,:,:] #beam along z+ direction
         phi = -1 * torch.fft.irfftn(phi_k, dim=(1,2)) #beam along z- direction
         return torch.fft.fftshift(phi, dim=(1,2))

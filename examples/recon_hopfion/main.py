@@ -39,7 +39,8 @@ m0 = np.load("HopfionRing.npy")
 geometry = maglab.Micro.m2geo(m0)
 (nx,ny,nz) = geometry.shape
 print("geometry:", geometry.shape)
-micro = maglab.Micro(geometry, dx).cuda()
+micro = maglab.Micro(nx,ny,nz, dx).cuda()
+micro.set_Ms(geometry*Ms0)
 micro.init_m0(m0)
 
 """
@@ -48,7 +49,7 @@ micro.init_m0(m0)
 
 max_tilt_angle = 30
 tilt_angles = np.arange(-1*max_tilt_angle, max_tilt_angle+1, 5)
-N = 200 # size of phase
+N = 200 # size of phasemap
 phasemapper = maglab.PhaseMapper(N, dx, rotation_padding=N).cuda()
 phaseset = PhaseSet()
 seed = 0 # use random seed when adding Gaussian noise
@@ -113,11 +114,11 @@ while batch < total_batches:
         optimizer.zero_grad()
         
         # Micromagnetic loss
-        loss_m = micro.loss(Ms=Ms0)
+        loss_m = micro.loss()
         
         # Phase loss
         m = micro.get_spin()
-        phi_predict = torch.stack([phasemapper(m, angle[i], axis[i], Ms=Ms0) for i in range(len(axis))]).unsqueeze(1)
+        phi_predict = phasemapper(m, angle, axis, Ms=Ms0)
         mask = mask.cuda()
         # Use mask if the phase data is incomplete.
         loss_phi = mse(phase.cuda() * mask, phi_predict * mask) 
@@ -138,9 +139,9 @@ while batch < total_batches:
         plt.close()
         
     if epoch % save_m_epoch == 0:
-        micro.save_state(f"{path_checkpoints}/epoch{epoch}.pth", Ms=Ms0)
+        micro.save_state(f"{path_checkpoints}/epoch{epoch}.pth")
         
         
-micro.save_state(f"{path_checkpoints}/final_epoch{epoch}.pth", Ms = Ms0)
+micro.save_state(f"{path_checkpoints}/final_epoch{epoch}.pth")
 # save as vtk
 #maglab.vtk.write_vtk(f"{path_checkpoints}/final", micro.get_spin().detach().cpu().numpy(), dx=dx)

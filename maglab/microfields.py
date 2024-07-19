@@ -188,6 +188,7 @@ class Zeeman(MicroField):
     
     def get_params(self,):
         return {'H': self.H.detach().clone()}
+
     
     
     

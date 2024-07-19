@@ -166,6 +166,16 @@ class Micro(nn.Module):
             res[i.__class__.__name__] = i.energy
         return res
     
+    def get_field(self):
+        for i in self.interactions:
+            i.save_energy = True
+            
+        loss = micro.loss()
+        H = 0.
+        for i in self.interactions:
+            H += i.field
+        return H
+    
     def effective_field(self, interaction):
         if isinstance(interaction, DeMag) or isinstance(interaction, Zeeman):
             return interaction.field
