@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import scipy.constants as const
 import os
-from .microfields import Exch, DMI, Anistropy, Zeeman, InterfacialDMI
+from .microfields import Exch, DMI, Anistropy, Zeeman, InterfacialDMI, CubicAnistropy
 from .demag import DeMag
 from .helper import Cartesian2Spherical, Spherical2Cartesian, to_tensor, init_scalar
 import torch.nn.functional as F
@@ -101,6 +101,7 @@ class Micro(nn.Module):
                 'Anistropy':'add_anis',
                 'Zeeman':'add_zeeman',
                 'InterfacialDMI': 'add_interfacial_dmi',
+                'CubicAnistropy': 'add_cubic_anis'
                 }
             for key in interactions:
                 getattr(micro, set_interaction_dict[key],)(**interactions[key])
@@ -129,7 +130,11 @@ class Micro(nn.Module):
         
     def set_requires_grad(self, requires_grad):
         self.spherical.requires_grad_(requires_grad)
-       
+    
+    def set_save_energy(self, save_energy):
+        for i in self.interactions:
+            i.save_energy = save_energy
+            
     def add_exch(self, A, save_energy=False):
         self.interactions.append(Exch(self.shape, self.dx,  A, self.pbc, save_energy))
         
@@ -143,10 +148,15 @@ class Micro(nn.Module):
         self.interactions.append(DeMag(*self.shape, self.dx, save_energy))
         
     def add_anis(self, ku, anis_axis=(0,0,1),save_energy=False):
-        self.interactions.append(Anistropy(self.shape, self.dx, ku, anis_axis, save_energy))        
+        self.interactions.append(Anistropy(self.shape, self.dx, ku, anis_axis, save_energy))     
+        
+    def add_cubic_anis(self, kc, axis1=(1,0,0),axis2=(0,1,0), save_energy=False):
+        self.interactions.append(CubicAnistropy(self.shape, self.dx, kc, axis1, axis2, save_energy))    
+
 
     def add_zeeman(self, H, save_energy=False): 
         self.interactions.append(Zeeman(self.shape, self.dx, H, save_energy))
+        
         
     def remove_interaction(self, i_name):
         self.interactions = nn.ModuleList([
@@ -163,18 +173,18 @@ class Micro(nn.Module):
     def get_energy(self):
         res = {}
         for i in self.interactions:
-            res[i.__class__.__name__] = i.energy
+            res[i.__class__.__name__] = i.E.detach()
         return res
     
     def get_field(self):
         for i in self.interactions:
             i.save_energy = True
             
-        loss = micro.loss()
-        H = 0.
+        loss = self.loss()
+        res = {}
         for i in self.interactions:
-            H += i.field
-        return H
+            res[i.__class__.__name__] = self.effective_field(i)
+        return res
     
     def effective_field(self, interaction):
         if isinstance(interaction, DeMag) or isinstance(interaction, Zeeman):

@@ -28,6 +28,7 @@ function gen_energy(;pbc="", cylinder=false)
     demag = add_demag(sim)
     zeeman = add_zeeman(sim, (0,0,1e3))
     interfacial_dmi = add_dmi(sim, 2e-4, type="interfacial")
+    cubic = add_cubic_anis(sim, 4.5e5)
 
     init_m0(sim, init_m0_fun)
 

@@ -168,6 +168,39 @@ class Anistropy(MicroField):
     def get_params(self,):
         return {'ku': self.ku.detach().clone(),
                 'anis_axis': self.anis_axis.detach().clone()}
+        
+class CubicAnistropy(MicroField):
+    def __init__(self, shape, dx, kc, axis1, axis2, save_energy=False):
+        super().__init__()
+        self.shape = shape
+        self.dV = dx**3
+        self.kc = nn.Parameter(init_scalar(kc, self.shape), requires_grad=False)
+        axis3 = tuple(np.cross(np.array(axis1), np.array(axis2)))
+        axes = []
+        self.axis1 = nn.Parameter(init_vector(axis1, self.shape, normalize=True), requires_grad=False)
+        self.axis2 = nn.Parameter(init_vector(axis2, self.shape, normalize=True), requires_grad=False)
+        self.axis3 = nn.Parameter(init_vector(axis3, self.shape, normalize=True), requires_grad=False)
+        self.axes = axes
+        self.save_energy = save_energy
+        
+    def forward(self, spin, Ms, ):
+        geo = Ms > 1e-3
+        m_axis1 = torch.sum(spin*self.axis1, axis=0) ** 4
+        m_axis2 = torch.sum(spin*self.axis2, axis=0) ** 4
+        m_axis3 = torch.sum(spin*self.axis3, axis=0) ** 4
+        E = -1 * self.kc * self.dV * (m_axis1+m_axis2+m_axis3) * geo
+        
+        loss = torch.mean(E)
+        if self.save_energy:
+            self.E = E.detach().clone()
+            self.field = torch.autograd.grad(loss, spin, create_graph=True)[0].detach().clone()
+                    
+        return loss
+    
+    def get_params(self,):
+        return {'kc': self.kc.detach().clone(),
+                'axis1': self.axis1.detach().clone(),
+                'axis2': self.axis2.detach().clone()}
     
 class Zeeman(MicroField):
     def __init__(self, shape, dx, H, save_energy=False):

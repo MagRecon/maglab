@@ -21,9 +21,12 @@ class test1(unittest.TestCase):
         micro.add_demag(save_energy=True)
         micro.add_zeeman((0,0,1e3), save_energy=True)
         micro.add_interfacial_dmi(2e-4, save_energy=True)
+        micro.add_cubic_anis(4.5e5, save_energy=True)
         micro.init_m0(m0)
         micro.cuda()
         return micro
+    
+
             
     def tearDown(self):
         self.erergy_cubiod = None
@@ -34,20 +37,18 @@ class test1(unittest.TestCase):
     
     def compare_energy(self, m0, Ms, e_jumag, field_jumag, pbc=""):
         micro = self.create_micro(m0, Ms, pbc)
-        micro.loss()
+        field = micro.get_field()
+        E = micro.get_energy()
 
-        for (i, interaction) in enumerate(micro.interactions):
-            energy = interaction.E.detach().cpu().numpy()
-            energy_diff = e_jumag[i,] - energy
+        for i, key in enumerate(field):
+            energy_diff = e_jumag[i,] - E[key].detach().cpu().numpy()
             error = self.maxl1(energy_diff) / self.maxl1(e_jumag[i,])
-            print(interaction.__class__.__name__, error)
+            print(key,"_E:", error)
             self.assertTrue(error < 1e-5)
-
-        for (i, interaction) in enumerate(micro.interactions):
-            field = micro.effective_field(interaction).detach().cpu().numpy()
-            field_diff = field_jumag[i,] - field
+            
+            field_diff = field_jumag[i,] - field[key].detach().cpu().numpy()
             error = self.maxl1(field_diff) / self.maxl1(field_jumag[i,])
-            print(interaction.__class__.__name__, error)
+            print(key,"_H:", error)
             self.assertTrue(error < 1e-5)
         
     def test_cubiod(self):
