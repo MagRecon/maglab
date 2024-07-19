@@ -150,6 +150,7 @@ class Anistropy(MicroField):
         self.shape = shape
         self.dV = dx**3
         self.ku = nn.Parameter(init_scalar(ku, self.shape), requires_grad=False)
+        self.axis_tuple = anis_axis
         self.anis_axis = nn.Parameter(init_vector(anis_axis, self.shape, normalize=True), requires_grad=False)
         self.save_energy = save_energy
         
@@ -167,7 +168,7 @@ class Anistropy(MicroField):
     
     def get_params(self,):
         return {'ku': self.ku.detach().clone(),
-                'anis_axis': self.anis_axis.detach().clone()}
+                'anis_axis': self.axis_tuple}
         
 class CubicAnistropy(MicroField):
     def __init__(self, shape, dx, kc, axis1, axis2, save_energy=False):
@@ -176,11 +177,10 @@ class CubicAnistropy(MicroField):
         self.dV = dx**3
         self.kc = nn.Parameter(init_scalar(kc, self.shape), requires_grad=False)
         axis3 = tuple(np.cross(np.array(axis1), np.array(axis2)))
-        axes = []
+        self.axes = [axis1, axis2]
         self.axis1 = nn.Parameter(init_vector(axis1, self.shape, normalize=True), requires_grad=False)
         self.axis2 = nn.Parameter(init_vector(axis2, self.shape, normalize=True), requires_grad=False)
         self.axis3 = nn.Parameter(init_vector(axis3, self.shape, normalize=True), requires_grad=False)
-        self.axes = axes
         self.save_energy = save_energy
         
     def forward(self, spin, Ms, ):
@@ -199,14 +199,15 @@ class CubicAnistropy(MicroField):
     
     def get_params(self,):
         return {'kc': self.kc.detach().clone(),
-                'axis1': self.axis1.detach().clone(),
-                'axis2': self.axis2.detach().clone()}
+                'axis1': self.axes[0],
+                'axis2': self.axes[1]}
     
 class Zeeman(MicroField):
     def __init__(self, shape, dx, H, save_energy=False):
         super().__init__()
         self.shape = shape
         self.dV = dx**3
+        self.H_tuple = H
         self.H = nn.Parameter(init_vector(H, self.shape), requires_grad=False)
         self.save_energy = save_energy
 
@@ -220,7 +221,7 @@ class Zeeman(MicroField):
         return loss
     
     def get_params(self,):
-        return {'H': self.H.detach().clone()}
+        return {'H': self.H_tuple}
 
     
     

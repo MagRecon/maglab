@@ -71,7 +71,9 @@ class Micro(nn.Module):
         state['spherical'] = self.spherical.detach().clone()
         state['pbc'] = self.pbc
         state['interactions'] = self.get_interactions()
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        dirname = os.path.dirname(file_path)
+        if dirname:
+            os.makedirs(dirname, exist_ok=True)
         torch.save(state, file_path)
     
     @classmethod
@@ -171,6 +173,9 @@ class Micro(nn.Module):
         return params
     
     def get_energy(self):
+        for i in self.interactions:
+            i.save_energy = True
+        self.loss()
         res = {}
         for i in self.interactions:
             res[i.__class__.__name__] = i.E.detach()
@@ -180,7 +185,7 @@ class Micro(nn.Module):
         for i in self.interactions:
             i.save_energy = True
             
-        loss = self.loss()
+        self.loss()
         res = {}
         for i in self.interactions:
             res[i.__class__.__name__] = self.effective_field(i)

@@ -6,46 +6,69 @@ import maglab
 import unittest
 
 class TestMicro(unittest.TestCase):
-    def setUp(self):
+    @staticmethod
+    def create_micro():
         nx,ny,nz=64,64,4
         dx=5e-9
-        geo = maglab.geo.cylider(nx,nz)
-        self.micro = maglab.Micro(nx, ny, nz, dx, pbc="x").cpu()
-        
-    def tearDown(self):
-        self.micro = None    
-        
-    def test_interactions(self):
-        self.micro.set_Ms(1e5)
-        self.micro.add_exch(1e-12, save_energy=True)
-        self.micro.add_dmi(1e-4, save_energy=True)
-        self.micro.add_anis(1e3, anis_axis=(0.3,0.4,0.5), save_energy=True)
-        self.micro.add_demag(save_energy=True)
-        self.micro.add_zeeman((0,0,1e3), save_energy=True)
-        self.micro.add_interfacial_dmi(2e-4, save_energy=True)
-        self.micro.init_m0((0,0,1.))
+        micro = maglab.Micro(nx, ny, nz, dx, pbc="x").cuda()
+        return micro
+    
+    @staticmethod    
+    def add_interactions(micro):
+        micro.set_Ms(1e5)
+        micro.add_exch(1e-12, save_energy=True)
+        micro.add_dmi(1e-4, save_energy=True)
+        micro.add_anis(1e3, anis_axis=(0.3,0.4,0.5), save_energy=True)
+        micro.add_demag(save_energy=True)
+        micro.add_zeeman((0,0,1e3), save_energy=True)
+        micro.add_interfacial_dmi(2e-4, save_energy=True)
+        micro.add_cubic_anis(4.5e5, save_energy=True)
+        #micro.init_m0_random((0,0,1.))
+        micro.init_m0_random()
+        micro.cuda()
         
     def test_init_m0(self):
-        self.micro.init_m0((0,0,1.))
-        self.micro.init_m0(torch.zeros((2,*self.micro.shape)))
+        micro = self.create_micro()
+        micro.init_m0((0,0,1.))
+        micro.init_m0(torch.zeros((2,*micro.shape)))
+        micro.init_m0(torch.zeros((3,*micro.shape)))
 
     def test_set_requires_grad(self):
-        self.micro.set_requires_grad(False)
-        self.assertTrue(not self.micro.spherical.requires_grad)
+        micro = self.create_micro()
+        micro.set_requires_grad(False)
+        self.assertTrue(not micro.spherical.requires_grad)
         
-        self.micro.set_requires_grad(True)
-        self.assertTrue(self.micro.spherical.requires_grad)
+        micro.set_requires_grad(True)
+        self.assertTrue(micro.spherical.requires_grad)
+        
+    def maxl1(self, x):
+        return torch.max(torch.abs(x)).item()
         
     def test_io(self):
-        old_spin = self.micro.get_spin().detach().clone()
-        old_Ms = self.micro.Ms.detach().clone()
-        self.micro.save_state("state.pth")
+        micro = self.create_micro()
+        self.add_interactions(micro)
+        old_spin = micro.get_spin().detach().clone()
+        old_Ms = micro.Ms.detach().clone()
+        old_E = micro.get_energy()
+        old_H = micro.get_field()
+        micro.save_state("state.pth")
         
-        micro_load = maglab.Micro.load_state("state.pth").cpu()
+        micro_load = maglab.Micro.load_state("state.pth", init_interactions=True).cuda()
         new_spin = micro_load.get_spin().detach().clone()
         new_Ms = micro_load.Ms.detach().clone()
+        new_E = micro_load.get_energy()
+        new_H = micro_load.get_field()
         self.assertTrue(torch.allclose(old_spin, new_spin))
         self.assertTrue(torch.allclose(old_Ms, new_Ms))
+        for key in old_E:
+            diff_e = old_E[key]-new_E[key]
+            print(key, self.maxl1(old_E[key]))
+            error = self.maxl1(diff_e) / self.maxl1(old_E[key])
+            self.assertTrue(error < 1e-5)
+            
+            diff_h = old_H[key]-new_H[key]
+            error = self.maxl1(diff_h) / self.maxl1(old_H[key])
+            self.assertTrue(error < 1e-5)
         
 
 if __name__ == '__main__':
