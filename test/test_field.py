@@ -37,11 +37,13 @@ class test1(unittest.TestCase):
     
     def compare_energy(self, m0, Ms, e_jumag, field_jumag, pbc=""):
         micro = self.create_micro(m0, Ms, pbc)
-        field = micro.get_field()
-        E = micro.get_energy()
+        field = micro.get_field_dict()
+        E = micro.get_energy_dict()
 
-        for i, key in enumerate(field):
-            energy_diff = e_jumag[i,] - E[key].detach().cpu().numpy()
+        field_jumag = micro.geo.cpu() * field_jumag[:,:,]
+        for i, key in enumerate(E):
+            energy = E[key].detach().cpu().numpy()
+            energy_diff = e_jumag[i,] - energy
             error = self.maxl1(energy_diff) / self.maxl1(e_jumag[i,])
             print(key,"_E:", error)
             self.assertTrue(error < 1e-5)
