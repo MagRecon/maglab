@@ -135,8 +135,8 @@ def init_vector(v, shape, normalize=False):
             v_t[i,] = init_scalar(v[i], shape)
 
     elif isinstance(v, (np.ndarray, torch.Tensor)):
-        assert v.shape == shape, "Shape not match! Expect {}, got {} instead.".format(shape, v.shape)
-        v_t = to_tensor(v_t)
+        assert v.shape[1:] == shape, "Shape not match! Expect {}, got {} instead.".format(shape, v.shape)
+        v_t = to_tensor(v)
         
     else:
         raise ValueError("Function `init_vector` only accept one of (tuple, np.ndarray, torch.Tensor), got `{}` instead"

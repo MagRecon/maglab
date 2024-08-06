@@ -29,8 +29,8 @@ def phim_uniformly_magnetized_slab(mx, my, x, y, Lx, Ly, Lz, Ms):
 
 def phase_in_theory(mx,my, nx,ny,nz, dx,dy,dz, fov_x,fov_y, Ms):
     Lx,Ly,Lz = nx*dx, ny*dy, nz*dz
-    xs = (np.arange(fov_x)-fov_x//2)*dx
-    ys = (np.arange(fov_y)-fov_y//2)*dy
+    xs = np.linspace(-fov_x/2, fov_x/2, fov_x, endpoint=True)*dx
+    ys = np.linspace(-fov_y/2, fov_y/2, fov_y, endpoint=True)*dx
     X, Y = np.meshgrid(xs,ys,indexing='ij')
     phi = phim_uniformly_magnetized_slab(mx, my, X, Y, Lx, Ly, Lz, Ms)
     return phi

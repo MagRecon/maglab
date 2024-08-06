@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import scipy.constants as const
 import os
+import numpy as np
 from .microfields import Exch, DMI, Anistropy, Zeeman, InterfacialDMI, CubicAnistropy
 from .demag import DeMag
 from .helper import Cartesian2Spherical, Spherical2Cartesian, to_tensor, init_scalar
@@ -81,7 +82,7 @@ class Micro(nn.Module):
         if isinstance(state, str):
             state = torch.load(state)
         
-        if 'geo' in state:
+        if 'geo' in state: #old version
             geo = state['geo']
             nx, ny, nz = geo.shape
             micro = cls(nx, ny, nz, state['cellsize'])
@@ -105,8 +106,13 @@ class Micro(nn.Module):
                 'InterfacialDMI': 'add_interfacial_dmi',
                 'CubicAnistropy': 'add_cubic_anis'
                 }
-            for key in interactions:
-                getattr(micro, set_interaction_dict[key],)(**interactions[key])
+            if isinstance(interactions, list):
+                for x in interactions:
+                    name = x.pop('classname')
+                    getattr(micro, set_interaction_dict[name])(**x)
+            else: #old version
+                for key in interactions:
+                    getattr(micro, set_interaction_dict[key],)(**interactions[key])
             
         return micro.cuda()
     
@@ -133,31 +139,38 @@ class Micro(nn.Module):
     def set_requires_grad(self, requires_grad):
         self.spherical.requires_grad_(requires_grad)
     
-    def set_save_energy(self, save_energy):
-        for i in self.interactions:
-            i.save_energy = save_energy
-            
-    def add_exch(self, A, save_energy=False):
-        self.interactions.append(Exch(self.shape, self.dx,  A, self.pbc, save_energy))
+
+    def add_exch(self, A, ):
+        self.interactions.append(Exch(self.shape, self.dx,  A, self.pbc, ))
         
-    def add_dmi(self, D, save_energy=False):
-        self.interactions.append(DMI(self.shape, self.dx,  D, self.pbc, save_energy))
+    def add_dmi(self, D, ):
+        if isinstance(D, (np.ndarray, torch.Tensor)):
+            self.interactions.append(DMI(self.shape, self.dx,  D, self.pbc, ))
+        elif isinstance(D, float):
+            self.interactions.append(DMI(self.shape, self.dx,  (D,D,D), self.pbc, ))
+        elif isinstance(D, tuple) and len(D)==3:
+            self.interactions.append(DMI(self.shape, self.dx,  D, self.pbc, ))
+        else:
+            raise ValueError('D should be a float, a tuple of 3 floats, or a tensor with shape (3,nx,ny,nz).')
         
-    def add_interfacial_dmi(self, D, save_energy=False):
-        self.interactions.append(InterfacialDMI(self.shape, self.dx,  D, self.pbc, save_energy))
+    def add_anis_dmi(self, D, ):
+        self.interactions.append(DMI(self.shape, self.dx,  (-D,D,0), self.pbc, ))
         
-    def add_demag(self, save_energy=False):
-        self.interactions.append(DeMag(*self.shape, self.dx, save_energy))
+    def add_interfacial_dmi(self, D, ):
+        self.interactions.append(InterfacialDMI(self.shape, self.dx,  D, self.pbc, ))
         
-    def add_anis(self, ku, anis_axis=(0,0,1),save_energy=False):
-        self.interactions.append(Anistropy(self.shape, self.dx, ku, anis_axis, save_energy))     
+    def add_demag(self, ):
+        self.interactions.append(DeMag(*self.shape, self.dx, ))
         
-    def add_cubic_anis(self, kc, axis1=(1,0,0),axis2=(0,1,0), save_energy=False):
-        self.interactions.append(CubicAnistropy(self.shape, self.dx, kc, axis1, axis2, save_energy))    
+    def add_anis(self, ku, anis_axis=(0,0,1),):
+        self.interactions.append(Anistropy(self.shape, self.dx, ku, anis_axis, ))     
+        
+    def add_cubic_anis(self, kc, axis1=(1,0,0),axis2=(0,1,0), ):
+        self.interactions.append(CubicAnistropy(self.shape, self.dx, kc, axis1, axis2, ))    
 
 
-    def add_zeeman(self, H, save_energy=False): 
-        self.interactions.append(Zeeman(self.shape, self.dx, H, save_energy))
+    def add_zeeman(self, H, ): 
+        self.interactions.append(Zeeman(self.shape, self.dx, H, ))
         
         
     def remove_interaction(self, i_name):
@@ -167,54 +180,81 @@ class Micro(nn.Module):
         ])
         
     def get_interactions(self,):
-        params = {}
+        interactions = []
         for i in self.interactions:
-            params[i.__class__.__name__] = i.get_params()
-        return params
+            interactions.append(i.get_params())
+        return interactions
+
+    def loss(self, unit=const.eV):
+        spin = self.get_spin()
+        E = self.get_energy_density(spin)
+        loss_m = self.dx**3 * torch.mean(E)     
+        return 1/unit * loss_m
     
-    def get_energy(self):
-        for i in self.interactions:
-            i.save_energy = True
-        self.loss()
-        res = {}
-        for i in self.interactions:
-            res[i.__class__.__name__] = i.E.detach()
-        return res
+    def get_energy_density(self, spin):
+        E = 0.
+        if len(self.interactions) > 0:      
+            for i in self.interactions:
+                E = E + i(spin, self.Ms)
+        return E
     
-    def get_field(self):
-        for i in self.interactions:
-            i.save_energy = True
-            
-        self.loss()
-        res = {}
-        for i in self.interactions:
-            res[i.__class__.__name__] = self.effective_field(i)
-        return res
+    def get_total_energy(self):
+        spin = self.get_spin()
+        energy_density = self.get_energy_density(spin)
+        return torch.sum(energy_density) * self.dx**3
     
-    def effective_field(self, interaction):
-        if isinstance(interaction, DeMag) or isinstance(interaction, Zeeman):
-            return interaction.field
-        
-        nxyz = self.shape[0] * self.shape[1] * self.shape[2]
-        dV = self.dx**3
-        ms_inv = -1/(const.mu_0 * self.Ms)
-        ms_inv[self.geo == 0] = 0
-        return nxyz / dV * ms_inv * interaction.field
+    def get_total_field(self):
+        spin = self.get_spin()
+        E = self.get_energy_density(spin)
+        total_energy = torch.sum(E)
+        field = torch.autograd.grad(total_energy, spin, create_graph=True)[0]
+        field = -1/(const.mu_0*(self.Ms+1e-3)) * field
+        field = self.geo * field
+        return field
+    
+    def get_tau(self):
+        spin = self.get_spin()
+        E = self.get_energy_density(spin)
+        total_energy = torch.sum(E)
+        field = torch.autograd.grad(total_energy, spin, create_graph=True)[0]
+        field = -1/(const.mu_0*(self.Ms+1e-3)) * field
+        field = self.geo * field
+        tau = torch.cross(field, spin, dim=0)
+        return tau    
+    
+    def get_energy_list(self):
+        # for testing purposes
+        # return a list of dicts, each of which is like 
+        # {'classname': i.__class__.__name__, 'value': value}
+        with torch.no_grad():
+            spin = self.get_spin()
+            energy_list = []
+            for i in self.interactions:
+                E =  self.dx**3 * i(spin, self.Ms)
+                item = {'classname': i.__class__.__name__, 'value': E}
+                energy_list.append(item)
+        return energy_list
+    
+    def get_field_list(self):
+        # for testing purposes
+        field_list = []
+        spin = self.get_spin()
+        if len(self.interactions) > 0:      
+            for i in self.interactions:
+                E = i(spin, self.Ms)
+                energy = torch.sum(E)
+                field = -1/(const.mu_0*(self.Ms+1e-3)) * torch.autograd.grad(energy, spin, create_graph=True)[0]
+                field = self.geo * field
+                item = {'classname': i.__class__.__name__, 'value': field.detach().clone()}
+                field_list.append(item)
+        return field_list
+    
     
     def get_spin(self,):
         m = self.geo * Spherical2Cartesian(self.spherical)
         return m
     
     def get_mag(self,):
-        return self.Ms * self.get_spin
-   
-    def loss(self, unit=const.eV):
-        loss_m = 0.
-        if len(self.interactions) > 0:
-            spin = self.get_spin()        
-            for i in self.interactions:
-                loss_m = loss_m + i(spin, self.Ms)
-                
-        return 1/unit * loss_m
-                
+        return self.Ms * self.get_spin()
+
         

@@ -23,7 +23,7 @@ class MicroField(nn.Module):
        
         
 class Exch(MicroField):
-    def __init__(self, shape, dx, A, pbc:str, save_energy=False):
+    def __init__(self, shape, dx, A, pbc:str,):
         """
         Initializes a new instance of the class.
 
@@ -45,10 +45,10 @@ class Exch(MicroField):
         self.A = nn.Parameter(init_scalar(A, self.shape), requires_grad=False)
         self.dx = dx
         self.pbc = pbc
-        self.save_energy = save_energy
+        
         self._init_pbc(pbc)
         
-    def forward(self, spin, Ms):   
+    def effective_field(self, spin, Ms):
         x = F.pad(spin, self.padding, 'constant', 0)
         Ms = F.pad(Ms, self.padding, 'constant', 0)
         geo = Ms > 1e-3 #tolerence
@@ -57,35 +57,38 @@ class Exch(MicroField):
         for i in range(1,4):
             f = f + (torch.roll(x, shifts=(1), dims=(i)) - x) * torch.roll(geo, shifts=(1), dims=(i-1))
             f = f + (torch.roll(x, shifts=(-1), dims=(i)) - x) * torch.roll(geo, shifts=(-1), dims=(i-1))
-
-        E = torch.sum(f * x, axis=0)
+        f = -self.A * self.dx * F.pad(f, self.crop, 'constant', 0)
+        return f
         
-        E = F.pad(E, self.crop, 'constant', 0)
-        
-        E = -self.A * self.dx * E
-        
-        loss = torch.mean(E)
-        if self.save_energy:
-            self.E = E.detach().clone()
-            self.field = torch.autograd.grad(loss, spin, create_graph=True)[0].detach().clone()
-                
-        return loss
+    def forward(self, spin, Ms):   
+        f = self.effective_field(spin, Ms)
+        E = torch.sum(f * spin, axis=0)        
+        E = E / self.dx**3
+        return E
     
     def get_params(self,):
-        return {'A': self.A.detach().clone()}
+        return {'classname': self.__class__.__name__,
+            'A': self.A.detach().clone()}
     
 class DMI(MicroField):
     # positive D -> left chiral
-    def __init__(self, shape, dx, D, pbc:str, save_energy=False):
+    def __init__(self, shape, dx, D_vector, pbc:str, ):
         super().__init__()
         self.shape = shape
-        self.dx2 = dx**2
-        self.D = nn.Parameter(init_scalar(D, self.shape), requires_grad=False)
+        self.dx = dx
+        #self.D = nn.Parameter(init_scalar(D, self.shape), requires_grad=False)
         self.pbc = pbc
-        self.save_energy = save_energy
+        
         self._init_pbc(pbc)
+        self._init_D(D_vector)
+        
+    def _init_D(self, D_vector):
+        D = init_vector(D_vector, self.shape)
+        D = F.pad(D, self.padding, 'constant', 0)
+        self.D = nn.Parameter(D, requires_grad=False)
         
     def forward(self, spin, Ms):
+        Dx, Dy, Dz = self.D[0,],self.D[1,],self.D[2,]
         x = F.pad(spin, self.padding, 'constant', 0)
             
         d1 = torch.cross(x, torch.roll(x, shifts=(1), dims=(1)), dim=0)[0,]
@@ -94,30 +97,30 @@ class DMI(MicroField):
         d4 = -1 * torch.cross(x, torch.roll(x, shifts=(-1), dims=(2)), dim=0)[1,]
         d5 = torch.cross(x, torch.roll(x, shifts=(1), dims=(3)), dim=0)[2,]
         d6 = -1 * torch.cross(x, torch.roll(x, shifts=(-1), dims=(3)), dim=0)[2,]
-        E = d1+d2+d3+d4+d5+d6
+        #E = d1+d2+d3+d4+d5+d6
+        E = Dx * (d1+d2) + Dy * (d3+d4) + Dz * (d5+d6)
         
         E = F.pad(E, self.crop, 'constant', 0)
         
-        E = 0.5 * self.D * self.dx2 * E    
+        E = 0.5 * self.dx**2 * E    
         
-        loss = torch.mean(E)
-        if self.save_energy:
-            self.E = E.detach().clone()
-            self.field = torch.autograd.grad(loss, spin, create_graph=True)[0].detach().clone()
+        E = E / self.dx**3
             
-        return loss
+        return E
     
     def get_params(self,):
-        return {'D': self.D.detach().clone()}
+        D = F.pad(self.D, self.crop, 'constant', 0)
+        return {'classname': self.__class__.__name__,
+            'D': D.detach().clone()}
     
 class InterfacialDMI(MicroField):
     # positive D -> left chiral
-    def __init__(self, shape, dx, D, pbc:str, save_energy=False):
+    def __init__(self, shape, dx, D, pbc:str, ):
         super().__init__()
         self.shape = shape
-        self.dx2 = dx**2
+        self.dx = dx
         self.D = nn.Parameter(init_scalar(D, self.shape), requires_grad=False)
-        self.save_energy = save_energy
+        
         self._init_pbc(pbc)
         
     def forward(self, spin, Ms):
@@ -131,97 +134,85 @@ class InterfacialDMI(MicroField):
         
         E = F.pad(E, self.crop, 'constant', 0)
         
-        E = 0.5 * self.D * self.dx2 * E    
+        E = 0.5 * self.D * self.dx**2 * E    
         
-        loss = torch.mean(E)
-        if self.save_energy:
-            self.E = E.detach().clone()
-            self.field = torch.autograd.grad(loss, spin, create_graph=True)[0].detach().clone()
+        E = E / self.dx**3
             
-        return loss
+        return E
     
     def get_params(self,):
-        return {'D': self.D.detach().clone()}
+        return {'classname': self.__class__.__name__,
+            'D': self.D.detach().clone()}
     
     
 class Anistropy(MicroField):
-    def __init__(self, shape, dx, ku, anis_axis, save_energy=False):
+    def __init__(self, shape, dx, ku, anis_axis, ):
         super().__init__()
         self.shape = shape
-        self.dV = dx**3
+        self.dx = dx
         self.ku = nn.Parameter(init_scalar(ku, self.shape), requires_grad=False)
         self.axis_tuple = anis_axis
         self.anis_axis = nn.Parameter(init_vector(anis_axis, self.shape, normalize=True), requires_grad=False)
-        self.save_energy = save_energy
+        
         
     def forward(self, spin, Ms, ):
         geo = Ms > 1e-3
         mh = torch.sum(spin*self.anis_axis, axis=0)
-        E = self.ku * self.dV * (1 - torch.pow(mh, 2)) * geo
-        
-        loss = torch.mean(E)
-        if self.save_energy:
-            self.E = E.detach().clone()
-            self.field = torch.autograd.grad(loss, spin, create_graph=True)[0].detach().clone()
+        E = self.ku * (1 - torch.pow(mh, 2)) * geo
                     
-        return loss
+        return E
     
     def get_params(self,):
-        return {'ku': self.ku.detach().clone(),
+        return {'classname': self.__class__.__name__,
+            'ku': self.ku.detach().clone(),
                 'anis_axis': self.axis_tuple}
         
 class CubicAnistropy(MicroField):
-    def __init__(self, shape, dx, kc, axis1, axis2, save_energy=False):
+    def __init__(self, shape, dx, kc, axis1, axis2, ):
         super().__init__()
         self.shape = shape
-        self.dV = dx**3
+        self.dx = dx
         self.kc = nn.Parameter(init_scalar(kc, self.shape), requires_grad=False)
         axis3 = tuple(np.cross(np.array(axis1), np.array(axis2)))
         self.axes = [axis1, axis2]
         self.axis1 = nn.Parameter(init_vector(axis1, self.shape, normalize=True), requires_grad=False)
         self.axis2 = nn.Parameter(init_vector(axis2, self.shape, normalize=True), requires_grad=False)
         self.axis3 = nn.Parameter(init_vector(axis3, self.shape, normalize=True), requires_grad=False)
-        self.save_energy = save_energy
+        
         
     def forward(self, spin, Ms, ):
         geo = Ms > 1e-3
         m_axis1 = torch.sum(spin*self.axis1, axis=0) ** 4
         m_axis2 = torch.sum(spin*self.axis2, axis=0) ** 4
         m_axis3 = torch.sum(spin*self.axis3, axis=0) ** 4
-        E = -1 * self.kc * self.dV * (m_axis1+m_axis2+m_axis3) * geo
-        
-        loss = torch.mean(E)
-        if self.save_energy:
-            self.E = E.detach().clone()
-            self.field = torch.autograd.grad(loss, spin, create_graph=True)[0].detach().clone()
+        E = -1 * self.kc * (m_axis1+m_axis2+m_axis3) * geo
                     
-        return loss
+        return E
     
     def get_params(self,):
-        return {'kc': self.kc.detach().clone(),
+        return {'classname': self.__class__.__name__,
+                'kc': self.kc.detach().clone(),
                 'axis1': self.axes[0],
                 'axis2': self.axes[1]}
     
 class Zeeman(MicroField):
-    def __init__(self, shape, dx, H, save_energy=False):
+    def __init__(self, shape, dx, H, ):
         super().__init__()
         self.shape = shape
-        self.dV = dx**3
+        self.dx = dx
         self.H_tuple = H
         self.H = nn.Parameter(init_vector(H, self.shape), requires_grad=False)
-        self.save_energy = save_energy
+        
 
     def forward(self, spin, Ms):   
-        E = -1 * const.mu_0 * Ms * self.dV * torch.sum(spin*self.H, axis=0)
-        loss = torch.mean(E)
-        if self.save_energy:
-            self.E = E.detach().clone()
-            self.field = self.H.detach().clone()
-            
-        return loss
+        E = -1 * const.mu_0 * Ms * torch.sum(spin*self.H, axis=0)
+        return E
     
     def get_params(self,):
-        return {'H': self.H_tuple}
+        return {'classname': self.__class__.__name__,
+                'H': self.H_tuple}
+    
+
 
     
     

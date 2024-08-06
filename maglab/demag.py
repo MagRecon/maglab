@@ -78,10 +78,9 @@ def coords(n, d=1):
     return d * (torch.arange(n)-n//2).double()
 
 class DeMag(MicroField):        
-    def __init__(self, nx, ny, nz, dx, save_energy=False):
+    def __init__(self, nx, ny, nz, dx):
         super().__init__()
         self.shape = (nx,ny,nz)
-        self.save_energy = save_energy
         self.dV = dx**3
         
         x,y,z = coords(2*nx+2, dx).cuda(), coords(2*ny+2, dx).cuda(), coords(2*nz+2, dx).cuda()
@@ -146,14 +145,9 @@ class DeMag(MicroField):
             
         H,M = self.effective_field(M)
         
-        E = -1/2 * const.mu_0 * self.dV * torch.sum(H*M, axis=0)
+        E = -1/2 * const.mu_0 * torch.sum(H*M, axis=0)
         
-        if self.save_energy:
-            self.E = E.detach().clone()
-            self.field = H.detach().clone()
-            
-        loss = torch.mean(E)
-        return loss
+        return E
     
     def get_params(self,):
-        return {}
+        return {'classname': self.__class__.__name__}

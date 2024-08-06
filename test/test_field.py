@@ -15,19 +15,19 @@ class test1(unittest.TestCase):
         nx,ny,nz = 11,11,11
         micro = maglab.Micro(nx, ny, nz, dx, pbc=pbc)
         micro.set_Ms(Ms)
-        micro.add_exch(1e-12, save_energy=True)
-        micro.add_dmi(1e-4, save_energy=True)
-        micro.add_anis(1e3, anis_axis=(0.3,0.4,0.5), save_energy=True)
-        micro.add_demag(save_energy=True)
-        micro.add_zeeman((0,0,1e3), save_energy=True)
-        micro.add_interfacial_dmi(2e-4, save_energy=True)
-        micro.add_cubic_anis(4.5e5, save_energy=True)
+        micro.add_exch(1e-12)
+        micro.add_dmi(1e-4)
+        micro.add_anis(1e3, anis_axis=(0.3,0.4,0.5))
+        micro.add_demag()
+        micro.add_zeeman((0,0,1e3) )
+        micro.add_interfacial_dmi(2e-4)
+        micro.add_cubic_anis(4.5e5)
+        micro.add_anis_dmi(2e-3)
         micro.init_m0(m0)
         micro.cuda()
         return micro
     
-
-            
+        
     def tearDown(self):
         self.erergy_cubiod = None
         self.erergy_cylinder = None
@@ -37,20 +37,21 @@ class test1(unittest.TestCase):
     
     def compare_energy(self, m0, Ms, e_jumag, field_jumag, pbc=""):
         micro = self.create_micro(m0, Ms, pbc)
-        field = micro.get_field_dict()
-        E = micro.get_energy_dict()
+        field = micro.get_field_list()
+        E = micro.get_energy_list()
 
         field_jumag = micro.geo.cpu() * field_jumag[:,:,]
-        for i, key in enumerate(E):
-            energy = E[key].detach().cpu().numpy()
+        for i, interaction in enumerate(E):
+            name = interaction['classname']
+            energy = interaction['value'].detach().cpu().numpy()
             energy_diff = e_jumag[i,] - energy
             error = self.maxl1(energy_diff) / self.maxl1(e_jumag[i,])
-            print(key,"_E:", error)
+            print(name,"_E:", error)
             self.assertTrue(error < 1e-5)
             
-            field_diff = field_jumag[i,] - field[key].detach().cpu().numpy()
+            field_diff = field_jumag[i,] - field[i]['value'].detach().cpu().numpy()
             error = self.maxl1(field_diff) / self.maxl1(field_jumag[i,])
-            print(key,"_H:", error)
+            print(name,"_H:", error)
             self.assertTrue(error < 1e-5)
         
     def test_cubiod(self):

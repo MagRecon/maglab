@@ -30,5 +30,5 @@ def shift_array(x, shifts):
     if shifts[1] > 0:
         y[:, :shifts[1]] = 0
     elif shifts[1] < 0:
-        y[:, shifts[0]:] = 0
+        y[:, shifts[1]:] = 0
     return y
