@@ -97,7 +97,6 @@ class DMI(MicroField):
         d4 = -1 * torch.cross(x, torch.roll(x, shifts=(-1), dims=(2)), dim=0)[1,]
         d5 = torch.cross(x, torch.roll(x, shifts=(1), dims=(3)), dim=0)[2,]
         d6 = -1 * torch.cross(x, torch.roll(x, shifts=(-1), dims=(3)), dim=0)[2,]
-        #E = d1+d2+d3+d4+d5+d6
         E = Dx * (d1+d2) + Dy * (d3+d4) + Dz * (d5+d6)
         
         E = F.pad(E, self.crop, 'constant', 0)

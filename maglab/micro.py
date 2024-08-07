@@ -185,8 +185,9 @@ class Micro(nn.Module):
             interactions.append(i.get_params())
         return interactions
 
-    def loss(self, unit=const.eV):
-        spin = self.get_spin()
+    def loss(self, spin=None, unit=const.eV):
+        if spin is None:
+            spin = self.get_spin()
         E = self.get_energy_density(spin)
         loss_m = self.dx**3 * torch.mean(E)     
         return 1/unit * loss_m

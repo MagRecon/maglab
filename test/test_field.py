@@ -22,7 +22,8 @@ class test1(unittest.TestCase):
         micro.add_zeeman((0,0,1e3) )
         micro.add_interfacial_dmi(2e-4)
         micro.add_cubic_anis(4.5e5)
-        micro.add_anis_dmi(2e-3)
+        #micro.add_anis_dmi(2e-3,)
+        micro.add_dmi((-2e-3, 2e-3,0))
         micro.init_m0(m0)
         micro.cuda()
         return micro

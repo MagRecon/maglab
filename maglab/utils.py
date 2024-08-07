@@ -5,7 +5,22 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from .helper import get_induction
 from .const import mu_0
 
-__all__ = ['show', 'show_list', 'estimate_Ms', 'estimate_m0']
+__all__ = ['show', 'show_list', 'estimate_Ms', 'estimate_m0','generate_circle_mask','get_meshgrid_3d']
+
+def generate_circle_mask(nx,ny, radius):
+    x = np.linspace(-nx/2, nx/2, nx, endpoint=True)
+    y = np.linspace(-ny/2, ny/2, ny, endpoint=True)
+    X,Y = np.meshgrid(x,y,indexing='ij')
+    R2 = X**2 + Y**2
+    mask = np.zeros((nx,ny))
+    mask[R2 <= radius**2] =1
+    return mask
+
+def get_meshgrid_3d(nx,ny,nz,dx=1,dy=1,dz=1):
+    x = np.linspace(-nx/2, nx/2, nx, endpoint=True)*dx
+    y = np.linspace(-ny/2, ny/2, ny, endpoint=True)*dy
+    z = np.linspace(-nz/2, nz/2, nz, endpoint=True)*dz
+    return np.meshgrid(x, y, z, indexing='ij')
 
 def estimate_Ms(phase, layer, dx, percentile=100):
     B = get_induction(phase, dx)
