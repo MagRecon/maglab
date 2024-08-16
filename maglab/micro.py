@@ -36,7 +36,7 @@ class Micro(nn.Module):
     def set_Ms(self, Ms):        
         Ms = init_scalar(Ms, self.shape)
         self.Ms = nn.Parameter(Ms, requires_grad=False)
-        self.geo = nn.Parameter((Ms>1e-3).float(), requires_grad=False)
+        self.geo = nn.Parameter(Ms.abs() > 1e-3, requires_grad=False)
         
     def _init_Ms(self):
         self.set_Ms(1/const.mu_0)
@@ -60,8 +60,9 @@ class Micro(nn.Module):
         mag.requires_grad = False
         
         geo = torch.sum(mag**2, dim=0)
-        geo[geo.abs() > tol] = 1.
-        geo[geo.abs() <= tol] = 0.
+        # geo[geo.abs() > tol] = 1.
+        # geo[geo.abs() <= tol] = 0.
+        geo = geo.abs() > tol
         return geo
         
     def save_state(self, file_path, Ms=None):
@@ -196,31 +197,27 @@ class Micro(nn.Module):
         E = 0.
         if len(self.interactions) > 0:      
             for i in self.interactions:
-                E = E + i(spin, self.Ms)
+                E = E + i(spin, self.geo, self.Ms)
         return E
     
-    def get_total_energy(self):
-        spin = self.get_spin()
+    def get_total_energy(self, spin):
         energy_density = self.get_energy_density(spin)
         return torch.sum(energy_density) * self.dx**3
     
-    def get_total_field(self):
-        spin = self.get_spin()
-        E = self.get_energy_density(spin)
-        total_energy = torch.sum(E)
-        field = torch.autograd.grad(total_energy, spin, create_graph=True)[0]
-        field = -1/(const.mu_0*(self.Ms+1e-3)) * field
-        field = self.geo * field
+    def get_field_from_loss(self, loss, spin, create_graph=False):
+        field = torch.autograd.grad(loss, spin, create_graph=create_graph)[0]
+        field[:, self.geo] *= -1/(const.mu_0 * self.Ms[self.geo])
+        field[:, ~self.geo] *= 0
         return field
     
-    def get_tau(self):
-        spin = self.get_spin()
+    def get_total_field(self, spin, create_graph=False):
         E = self.get_energy_density(spin)
         total_energy = torch.sum(E)
-        field = torch.autograd.grad(total_energy, spin, create_graph=True)[0]
-        field = -1/(const.mu_0*(self.Ms+1e-3)) * field
-        field = self.geo * field
-        tau = torch.cross(field, spin, dim=0)
+        return self.get_field_from_loss(total_energy, spin, create_graph)
+    
+    def get_tau(self, spin):
+        H = self.get_total_field(spin)
+        tau = torch.cross(H, spin, dim=0)
         return tau    
     
     def get_energy_list(self):
@@ -231,7 +228,7 @@ class Micro(nn.Module):
             spin = self.get_spin()
             energy_list = []
             for i in self.interactions:
-                E =  self.dx**3 * i(spin, self.Ms)
+                E =  self.dx**3 * i(spin, self.geo, self.Ms)
                 item = {'classname': i.__class__.__name__, 'value': E}
                 energy_list.append(item)
         return energy_list
@@ -239,13 +236,12 @@ class Micro(nn.Module):
     def get_field_list(self):
         # for testing purposes
         field_list = []
-        spin = self.get_spin()
         if len(self.interactions) > 0:      
             for i in self.interactions:
-                E = i(spin, self.Ms)
+                spin = self.get_spin()
+                E = i(spin, self.geo, self.Ms)
                 energy = torch.sum(E)
-                field = -1/(const.mu_0*(self.Ms+1e-3)) * torch.autograd.grad(energy, spin, create_graph=True)[0]
-                field = self.geo * field
+                field = self.get_field_from_loss(energy, spin)
                 item = {'classname': i.__class__.__name__, 'value': field.detach().clone()}
                 field_list.append(item)
         return field_list

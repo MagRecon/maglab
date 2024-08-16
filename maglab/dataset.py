@@ -54,8 +54,9 @@ class PhaseMap(torch.nn.Module):
         return array.float()
     
     def shift(self, shifts):
-        self.data = shift_array(self.data, shifts)
-        self.mask = shift_array(self.mask, shifts)
+        data = shift_array(self.data, shifts)
+        mask = shift_array(self.mask, shifts)
+        return PhaseMap(data, self.tilt_angle, self.tilt_axis, mask)
     
     def zoom(self, nx, ny):
         (x,y) = self.data.shape

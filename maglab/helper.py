@@ -48,6 +48,8 @@ def Cartesian2Spherical(m):
         m[:,rho==0.] = 0.
     theta = torch.arccos(m[2,])
     phi = torch.arctan2(m[1,], m[0,])
+    #phi = np.unwrap(phi.cpu().numpy())
+    #phi = torch.from_numpy(phi)
     return torch.stack([rho, theta, phi])
 
 def Spherical2Cartesian(p):
@@ -218,3 +220,7 @@ def crop(x, dims, axes):
 
 def cross_correlation(x, y):
     return torch.fft.ifft2(torch.fft.fft2(x) * torch.fft.fft2(y).conj())
+
+def coords(nx):
+    return np.linspace(-nx/2, nx/2, nx, endpoint=True)
+

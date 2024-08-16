@@ -39,6 +39,8 @@ def projection(x, theta, axis):
     return torch.sum(x, axis=-1)
 
 class PhaseMapper(nn.Module):
+    # Note: The phase calculated by this function is 2pi larger than those calculated by Pylorentz,
+    #       which is relavant to the k-grid. 
     def __init__(self, fov, dx, padding=True, rotation_padding=None):
         super().__init__()
 

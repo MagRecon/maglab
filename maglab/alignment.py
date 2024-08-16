@@ -1,10 +1,24 @@
 import torch
 import numpy as np
 import torch.nn.functional as F
-def mutual_correlation(x1, x2):
+
+def wrap(x):
+    nx,ny = x.shape
+    x1 = F.pad(x,(ny//2,ny//2), mode='circular')
+    x1 = torch.swapaxes(x1,0,1)
+    x1 = F.pad(x1,(nx//2,nx//2), mode='circular')
+    x1 = torch.swapaxes(x1,0,1)
+    return x1
+
+def mutual_correlation(x1, x2, mode):
     nx,ny = x1.shape
-    x1 = F.pad(x1, (nx//2, nx//2, ny//2, ny//2), mode='constant', value=0)
-    x2 = F.pad(x2, (nx//2, nx//2, ny//2, ny//2), mode='constant', value=0)
+    if mode == 'circular':
+        x1 = wrap(x1)
+        x2 = wrap(x2)
+    else:
+        x1 = F.pad(x1, (nx//2, nx//2, ny//2, ny//2), mode='constant', value=0)
+        x2 = F.pad(x2, (nx//2, nx//2, ny//2, ny//2), mode='constant', value=0)
+        
     f1 = torch.fft.fft2(torch.fft.ifftshift(x1, dim=(0,1)))
     f2 = torch.fft.fft2(torch.fft.ifftshift(x2, dim=(0,1)))
     fg = f1 * torch.conj(f2)
@@ -13,8 +27,8 @@ def mutual_correlation(x1, x2):
     mcf = torch.fft.ifft2(fg_n).real
     return torch.fft.fftshift(mcf, dim=(0,1))[nx//2:-nx//2, ny//2:-ny//2]
 
-def find_shift(x1, x2):
-    corre = mutual_correlation(x1,x2)
+def find_shift(x1, x2, mode='circular'):
+    corre = mutual_correlation(x1,x2,mode)
     max_idx = torch.argmax(corre)
     max_idx = np.unravel_index(max_idx.cpu().numpy(), corre.shape)
     cx, cy = corre.shape[0]//2, corre.shape[1]//2

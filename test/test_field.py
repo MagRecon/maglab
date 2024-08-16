@@ -36,6 +36,9 @@ class test1(unittest.TestCase):
     def maxl1(self, x):
         return torch.max(torch.abs(x)).item()
     
+    def max_min(self, x):
+        return torch.max(x) - torch.min(x)
+    
     def compare_energy(self, m0, Ms, e_jumag, field_jumag, pbc=""):
         micro = self.create_micro(m0, Ms, pbc)
         field = micro.get_field_list()
@@ -50,7 +53,7 @@ class test1(unittest.TestCase):
             print(name,"_E:", error)
             self.assertTrue(error < 1e-5)
             
-            field_diff = field_jumag[i,] - field[i]['value'].detach().cpu().numpy()
+            field_diff = micro.geo.cpu() * (field_jumag[i,] - field[i]['value'].detach().cpu().numpy())
             error = self.maxl1(field_diff) / self.maxl1(field_jumag[i,])
             print(name,"_H:", error)
             self.assertTrue(error < 1e-5)

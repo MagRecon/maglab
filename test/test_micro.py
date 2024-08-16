@@ -32,7 +32,22 @@ class TestMicro(unittest.TestCase):
         micro.init_m0((0,0,1.))
         micro.init_m0(torch.zeros((2,*micro.shape)))
         micro.init_m0(torch.zeros((3,*micro.shape)))
-
+        
+    def test_get_spin(self):
+        micro = maglab.Micro(1,1,1, 1e-9)
+        micro.set_Ms(1e5)
+        theta = torch.pi/3
+        phi = torch.pi/4
+        sp = torch.ones(size=(2,1,1,1))
+        sp[0,] = theta
+        sp[1,] = phi
+        m = maglab.helper.Spherical2Cartesian(sp)
+        micro.init_m0(m)
+        m0 = micro.get_spin()
+        micro.init_m0(sp)
+        m1 = micro.get_spin()
+        self.assertTrue(torch.allclose(m0, m1, rtol=1e-7))
+        
     def test_set_requires_grad(self):
         micro = self.create_micro()
         micro.set_requires_grad(False)

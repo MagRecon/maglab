@@ -48,23 +48,18 @@ class Exch(MicroField):
         
         self._init_pbc(pbc)
         
-    def effective_field(self, spin, Ms):
+    def forward(self, spin, geo, Ms):   
         x = F.pad(spin, self.padding, 'constant', 0)
-        Ms = F.pad(Ms, self.padding, 'constant', 0)
-        geo = Ms > 1e-3 #tolerence
-            
-        f = torch.zeros_like(x)
-        for i in range(1,4):
-            f = f + (torch.roll(x, shifts=(1), dims=(i)) - x) * torch.roll(geo, shifts=(1), dims=(i-1))
-            f = f + (torch.roll(x, shifts=(-1), dims=(i)) - x) * torch.roll(geo, shifts=(-1), dims=(i-1))
+        geo = F.pad(geo, self.padding, 'constant', 0)
+        f = 0.
+        for i in range(3):
+            f = f + (torch.roll(x, shifts=(1), dims=(i+1)) - x) * torch.roll(geo, shifts=(1), dims=(i))
+            f = f + (torch.roll(x, shifts=(-1), dims=(i+1)) - x) * torch.roll(geo, shifts=(-1), dims=(i))
         f = -self.A * self.dx * F.pad(f, self.crop, 'constant', 0)
-        return f
-        
-    def forward(self, spin, Ms):   
-        f = self.effective_field(spin, Ms)
-        E = torch.sum(f * spin, axis=0)        
+        E = torch.sum(f * spin, axis=0)          
         E = E / self.dx**3
         return E
+    
     
     def get_params(self,):
         return {'classname': self.__class__.__name__,
@@ -87,7 +82,7 @@ class DMI(MicroField):
         D = F.pad(D, self.padding, 'constant', 0)
         self.D = nn.Parameter(D, requires_grad=False)
         
-    def forward(self, spin, Ms):
+    def forward(self, spin, geo, Ms):
         Dx, Dy, Dz = self.D[0,],self.D[1,],self.D[2,]
         x = F.pad(spin, self.padding, 'constant', 0)
             
@@ -122,7 +117,7 @@ class InterfacialDMI(MicroField):
         
         self._init_pbc(pbc)
         
-    def forward(self, spin, Ms):
+    def forward(self, spin, geo, Ms):
         x = F.pad(spin, self.padding, 'constant', 0)
             
         d1 = torch.cross(x, torch.roll(x, shifts=(1), dims=(1)), dim=0)[1,]
@@ -154,8 +149,7 @@ class Anistropy(MicroField):
         self.anis_axis = nn.Parameter(init_vector(anis_axis, self.shape, normalize=True), requires_grad=False)
         
         
-    def forward(self, spin, Ms, ):
-        geo = Ms > 1e-3
+    def forward(self, spin, geo, Ms, ):
         mh = torch.sum(spin*self.anis_axis, axis=0)
         E = self.ku * (1 - torch.pow(mh, 2)) * geo
                     
@@ -179,8 +173,7 @@ class CubicAnistropy(MicroField):
         self.axis3 = nn.Parameter(init_vector(axis3, self.shape, normalize=True), requires_grad=False)
         
         
-    def forward(self, spin, Ms, ):
-        geo = Ms > 1e-3
+    def forward(self, spin, geo, Ms, ):
         m_axis1 = torch.sum(spin*self.axis1, axis=0) ** 4
         m_axis2 = torch.sum(spin*self.axis2, axis=0) ** 4
         m_axis3 = torch.sum(spin*self.axis3, axis=0) ** 4
@@ -203,7 +196,7 @@ class Zeeman(MicroField):
         self.H = nn.Parameter(init_vector(H, self.shape), requires_grad=False)
         
 
-    def forward(self, spin, Ms):   
+    def forward(self, spin, geo, Ms):   
         E = -1 * const.mu_0 * Ms * torch.sum(spin*self.H, axis=0)
         return E
     

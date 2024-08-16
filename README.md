@@ -1,4 +1,12 @@
-Maglab: 3D magnetic reconstruction package using Pytorch.
+Maglab: Micromagnetics based reconstruction of three-dimensional magnetic structures.
+
+#### Features:
+
+• Leverages differentiable programming for micromagnetic effective field calculation, avoiding manually encoding of mathematical expressions.
+
+• Differentiable magnetic phase shifts simulation.
+
+• Applying Labonte's steepest descent method on tomography.
 
 #### Installation:
 

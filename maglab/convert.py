@@ -9,7 +9,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def m2A(m, Ms, dx, shape=()):
+def m2A(m, dx=1, Ms=1/const.mu_0, shape=()):
     if len(shape) == 0:
         shape = m.shape[1:]
     converter = MagToVec(*shape, dx)
@@ -93,3 +93,28 @@ def curl(A, dx):
     curl_A = torch.stack((curl_x, curl_y, curl_z), dim=0)
     
     return curl_A
+
+
+def ift(x):
+    x = torch.fft.ifftn(x, dim=(1,2,3))
+    x = torch.fft.fftshift(x, dim=(1,2,3))
+    return x
+
+def skyrmion_number(spin):
+    pxm = torch.gradient(spin, dim=1)[0]
+    pym = torch.gradient(spin, dim=2)[0]
+    pzm = torch.gradient(spin, dim=3)[0]
+    px_py_m = torch.cross(pxm,pym)
+    py_pz_m = torch.cross(pym,pzm)
+    pz_px_m = torch.cross(pzm,pxm)
+    bx = torch.sum(spin*py_pz_m, dim=0)
+    by = torch.sum(spin*pz_px_m, dim=0)
+    bz = torch.sum(spin*px_py_m, dim=0)
+    return 1/(4*torch.pi) * torch.stack([bx,by,bz])
+
+    
+def hopf_index(spin):
+    B = skyrmion_number(spin)
+    A = m2A(B, dx=1, Ms=1/const.mu_0)
+    ab = torch.sum(A*B, dim=0)
+    return ab

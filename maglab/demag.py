@@ -137,7 +137,7 @@ class DeMag(MicroField):
         return H, M
     
     # input should be m*Ms    
-    def forward(self, m, Ms):
+    def forward(self, m, geo, Ms):
         M = m * Ms   
         for i in range(3):
             if not M.shape[i+1] == self.shape[i]:
