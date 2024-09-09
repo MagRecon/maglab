@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from maglab import PhaseMapper
 import maglab
-from maglab.utils import show, show_list
+from maglab.display import show, show_list
 
 import torch
 import warnings
@@ -45,7 +45,7 @@ class Test(unittest.TestCase):
         self.fov = 128
         self.Ms = 1e5
         self.phi_theory = phase_in_theory(mx, my, *self.dims,self.dx,self.dx,self.dx,self.fov,self.fov,self.Ms)
-        print("estimated Ms: {:.2e} A/m".format(maglab.estimate_Ms(self.phi_theory, 16, 1e-9)))
+        print("estimated Ms: {:.2e} A/m".format(maglab.helper.estimate_Ms(self.phi_theory, 16, 1e-9)))
         if torch.cuda.is_available:
             self.device = torch.device("cuda")
         else:
@@ -54,7 +54,7 @@ class Test(unittest.TestCase):
         m = np.zeros((3,*self.dims))
         m[0,], m[1,] = mx,my
         self.m = torch.from_numpy(m).to(self.device)
-        self.phasemapper = PhaseMapper(2*self.fov, self.dx, rotation_padding=100).to(self.device)
+        self.phasemapper = maglab.PhaseMapper(2*self.fov, self.dx, rotation_padding=100).to(self.device)
         
     def phase_from_A(self):
         m = self.m.clone()
@@ -63,8 +63,8 @@ class Test(unittest.TestCase):
         return phase.detach().cpu().numpy()
         
     def test_phase(self):
-        phi_simulate = self.phasemapper(self.m, theta=0., axis=0, Ms=self.Ms)
-        phi_simulate = phi_simulate.detach().cpu().numpy()[0,self.fov//2:-self.fov//2, self.fov//2:-self.fov//2]
+        phi_simulate = self.phasemapper(self.m, Ms=self.Ms)
+        phi_simulate = phi_simulate.detach().cpu().numpy()[self.fov//2:-self.fov//2, self.fov//2:-self.fov//2]
         phi_simulate = -1 * phi_simulate # we are using beam along z- direction, but the theory solution is using z+.
         phase_A = self.phase_from_A()
         show_list([self.phi_theory, 
@@ -72,8 +72,9 @@ class Test(unittest.TestCase):
                    phase_A,
                    self.phi_theory - phi_simulate,
                    self.phi_theory-phase_A,], 
-                    rows=2,titles=['theory', 'simulation', 'from_A',
-                                    'diff_simu', 'diff_from_A'])
+                  same_colorbar=False,
+                    rows=2,titles=['theory', 'simulate', 'proj_A',
+                                    'diff',  'diff_A'])
         
         print("mean error:", np.mean(np.abs(self.phi_theory - phi_simulate)) / np.mean(np.abs(self.phi_theory)))
         plt.savefig("phase.png", dpi=100)
@@ -83,7 +84,7 @@ class Test(unittest.TestCase):
         plt.legend()
         plt.savefig("line.png", dpi=100)
         plt.close()
-        
+
     def test_ltem(self):
         # amp= np.ones((128, 128))
         # nx, ny = self.dims[0], self.dims[1]

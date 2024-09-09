@@ -5,7 +5,7 @@ import os
 import numpy as np
 from .microfields import Exch, DMI, Anistropy, Zeeman, InterfacialDMI, CubicAnistropy
 from .demag import DeMag
-from .helper import Cartesian2Spherical, Spherical2Cartesian, to_tensor, init_scalar
+from .helper import to_tensor, init_scalar,init_vector
 import torch.nn.functional as F
 import logging
 
@@ -29,14 +29,17 @@ class Micro(nn.Module):
         self.shape = (nx, ny, nz)
         self._init_Ms()
         self.dx = dx   
-        self.spherical = nn.Parameter(torch.zeros((2,*self.shape)), requires_grad=True)
+        self.spin = nn.Parameter(torch.zeros((3,*self.shape)), requires_grad=True)
         self.interactions = nn.ModuleList()
         self.pbc = pbc
         
-    def set_Ms(self, Ms):        
-        Ms = init_scalar(Ms, self.shape)
+    def set_Ms(self, Ms, atol=1e-3):    
+        if isinstance(Ms, float):
+            Ms = Ms * torch.ones(self.shape)
+        else:
+            Ms = to_tensor(Ms)
+        self.geo = nn.Parameter(Ms.abs() > atol, requires_grad=False)
         self.Ms = nn.Parameter(Ms, requires_grad=False)
-        self.geo = nn.Parameter(Ms.abs() > 1e-3, requires_grad=False)
         
     def _init_Ms(self):
         self.set_Ms(1/const.mu_0)
@@ -60,8 +63,6 @@ class Micro(nn.Module):
         mag.requires_grad = False
         
         geo = torch.sum(mag**2, dim=0)
-        # geo[geo.abs() > tol] = 1.
-        # geo[geo.abs() <= tol] = 0.
         geo = geo.abs() > tol
         return geo
         
@@ -70,7 +71,7 @@ class Micro(nn.Module):
         state['shape'] = self.shape
         state['dx'] = self.dx
         state['Ms'] = self.Ms.detach().clone()
-        state['spherical'] = self.spherical.detach().clone()
+        state['spin'] = self.spin.detach().clone()
         state['pbc'] = self.pbc
         state['interactions'] = self.get_interactions()
         dirname = os.path.dirname(file_path)
@@ -83,18 +84,10 @@ class Micro(nn.Module):
         if isinstance(state, str):
             state = torch.load(state)
         
-        if 'geo' in state: #old version
-            geo = state['geo']
-            nx, ny, nz = geo.shape
-            micro = cls(nx, ny, nz, state['cellsize'])
-            micro.set_Ms(state['Ms']*geo)
-            micro.init_m0(state['angles'])
-        else:
-            nx, ny, nz = state['shape']
-            micro = cls(nx, ny, nz, state['dx'], state['pbc'])
-            micro.set_Ms(state['Ms'])
-            micro.init_m0(state['spherical'])
-
+        shape = state['shape']
+        micro = cls(*shape, state['dx'], pbc=state['pbc'])
+        micro.set_Ms(state['Ms'])
+        micro.init_m0(state['spin'])
 
         if init_interactions :
             interactions = state['interactions']
@@ -107,44 +100,37 @@ class Micro(nn.Module):
                 'InterfacialDMI': 'add_interfacial_dmi',
                 'CubicAnistropy': 'add_cubic_anis'
                 }
-            if isinstance(interactions, list):
-                for x in interactions:
-                    name = x.pop('classname')
-                    getattr(micro, set_interaction_dict[name])(**x)
-            else: #old version
-                for key in interactions:
-                    getattr(micro, set_interaction_dict[key],)(**interactions[key])
-            
+            for x in interactions:
+                name = x.pop('classname')
+                getattr(micro, set_interaction_dict[name])(**x)
+
         return micro.cuda()
     
     def init_m0(self, x): 
-        if isinstance(x, tuple):
-            m = torch.zeros((3,*self.shape))
-            m[0],m[1],m[2] = x[0],x[1],x[2]
-            x = Cartesian2Spherical(m)
-            self.spherical.data.copy_(x[1:,])
-        elif x.shape[0] == 3:
-            x = to_tensor(x)
-            x = Cartesian2Spherical(x)
-            self.spherical.data.copy_(x[1:,])
-        elif x.shape[0] == 2:
-            self.spherical.data.copy_(x)
-    
+        x = init_vector(x, self.shape, normalize=True).to(self.geo.device) * self.geo
+        self.spin.data.copy_(x)
+        
+    def update_spin(self, x, normalize=True):
+        if normalize:
+            norm = torch.sqrt(torch.sum(x**2, dim=0))
+            x[:, self.geo] = x[:, self.geo] / norm[self.geo]
+            x[:, ~self.geo] = 0.
+            self.spin.data.copy_(x)
+
     def init_m0_random(self, seed=None):
         if seed:
             torch.manual_seed(seed)
             
-        self.spherical[0,].data.copy_(torch.rand(self.shape) * torch.pi)
-        self.spherical[1,].data.copy_(torch.rand(self.shape) * 2*torch.pi)    
+        spin = torch.rand(3, *self.shape) - 0.5
+        self.init_m0(spin) 
         
     def set_requires_grad(self, requires_grad):
-        self.spherical.requires_grad_(requires_grad)
-    
+        self.spin.requires_grad_(requires_grad)
 
-    def add_exch(self, A, ):
+    def add_exch(self, A):
         self.interactions.append(Exch(self.shape, self.dx,  A, self.pbc, ))
         
-    def add_dmi(self, D, ):
+    def add_dmi(self, D):
         if isinstance(D, (np.ndarray, torch.Tensor)):
             self.interactions.append(DMI(self.shape, self.dx,  D, self.pbc, ))
         elif isinstance(D, float):
@@ -163,15 +149,14 @@ class Micro(nn.Module):
     def add_demag(self, ):
         self.interactions.append(DeMag(*self.shape, self.dx, ))
         
-    def add_anis(self, ku, anis_axis=(0,0,1),):
-        self.interactions.append(Anistropy(self.shape, self.dx, ku, anis_axis, ))     
+    def add_anis(self, ku, anis_axis=(0,0,1), normalize=True):
+        self.interactions.append(Anistropy(ku, anis_axis, normalize))     
         
-    def add_cubic_anis(self, kc, axis1=(1,0,0),axis2=(0,1,0), ):
-        self.interactions.append(CubicAnistropy(self.shape, self.dx, kc, axis1, axis2, ))    
+    def add_cubic_anis(self, kc, axis1=(1,0,0), axis2=(0,1,0), normalize=True):
+        self.interactions.append(CubicAnistropy(kc, axis1, axis2, normalize))    
 
-
-    def add_zeeman(self, H, ): 
-        self.interactions.append(Zeeman(self.shape, self.dx, H, ))
+    def add_zeeman(self, H): 
+        self.interactions.append(Zeeman(H))
         
         
     def remove_interaction(self, i_name):
@@ -248,8 +233,7 @@ class Micro(nn.Module):
     
     
     def get_spin(self,):
-        m = self.geo * Spherical2Cartesian(self.spherical)
-        return m
+        return self.geo * self.spin
     
     def get_mag(self,):
         return self.Ms * self.get_spin()

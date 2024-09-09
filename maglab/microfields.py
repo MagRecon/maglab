@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import numpy as np
 import scipy.constants as const
 
-from .helper import to_tensor, init_scalar, init_vector
+from .helper import to_tensor, init_scalar, init_vector, normalize_tuple
 
 __all__ = ['Exch', 'DMI', 'Zeeman', 'Anistropy', 'InterfacialDMI', 'MicroField']
 
@@ -33,16 +33,9 @@ class Exch(MicroField):
             A (float or Tensor): The exchange constant. If a float, it is broadcasted to the shape of the tensor.
             pbc (str): A string specifying the periodic boundary conditions.
             save_energy (bool, optional): Whether to save the energy. Defaults to False.
-
-        Returns:
-            None
-
-        Raises:
-            None
         """
         super().__init__()
-        self.shape = shape
-        self.A = nn.Parameter(init_scalar(A, self.shape), requires_grad=False)
+        self.register_buffer('A', init_scalar(A, shape))
         self.dx = dx
         self.pbc = pbc
         
@@ -66,21 +59,16 @@ class Exch(MicroField):
             'A': self.A.detach().clone()}
     
 class DMI(MicroField):
-    # positive D -> left chiral
+    # positive D -> left chirality
     def __init__(self, shape, dx, D_vector, pbc:str, ):
         super().__init__()
-        self.shape = shape
         self.dx = dx
-        #self.D = nn.Parameter(init_scalar(D, self.shape), requires_grad=False)
         self.pbc = pbc
-        
         self._init_pbc(pbc)
-        self._init_D(D_vector)
         
-    def _init_D(self, D_vector):
-        D = init_vector(D_vector, self.shape)
+        D = init_vector(D_vector, shape)
         D = F.pad(D, self.padding, 'constant', 0)
-        self.D = nn.Parameter(D, requires_grad=False)
+        self.register_buffer('D', D)
         
     def forward(self, spin, geo, Ms):
         Dx, Dy, Dz = self.D[0,],self.D[1,],self.D[2,]
@@ -111,11 +99,12 @@ class InterfacialDMI(MicroField):
     # positive D -> left chiral
     def __init__(self, shape, dx, D, pbc:str, ):
         super().__init__()
-        self.shape = shape
         self.dx = dx
-        self.D = nn.Parameter(init_scalar(D, self.shape), requires_grad=False)
-        
         self._init_pbc(pbc)
+        
+        D = init_scalar(D, shape)
+        D = F.pad(D, self.padding, 'constant', 0)
+        self.register_buffer('D', D)
         
     def forward(self, spin, geo, Ms):
         x = F.pad(spin, self.padding, 'constant', 0)
@@ -125,79 +114,75 @@ class InterfacialDMI(MicroField):
         d3 = -1 * torch.cross(x, torch.roll(x, shifts=(1), dims=(2)), dim=0)[0,]
         d4 = torch.cross(x, torch.roll(x, shifts=(-1), dims=(2)), dim=0)[0,]
         E = d1+d2+d3+d4
-        
-        E = F.pad(E, self.crop, 'constant', 0)
-        
         E = 0.5 * self.D * self.dx**2 * E    
         
+        E = F.pad(E, self.crop, 'constant', 0)
         E = E / self.dx**3
             
         return E
     
     def get_params(self,):
+        D =  F.pad(self.D.detach().clone(), self.crop, 'constant', 0)
         return {'classname': self.__class__.__name__,
-            'D': self.D.detach().clone()}
+            'D': D}
     
     
 class Anistropy(MicroField):
-    def __init__(self, shape, dx, ku, anis_axis, ):
+    def __init__(self, ku, anis_axis, normalize=True):
         super().__init__()
-        self.shape = shape
-        self.dx = dx
-        self.ku = nn.Parameter(init_scalar(ku, self.shape), requires_grad=False)
+        self.ku = ku
+        if normalize:
+            anis_axis = normalize_tuple(anis_axis)
+            
         self.axis_tuple = anis_axis
-        self.anis_axis = nn.Parameter(init_vector(anis_axis, self.shape, normalize=True), requires_grad=False)
-        
+        self.register_buffer('axis', torch.tensor(anis_axis).view(3, 1, 1, 1))
+
         
     def forward(self, spin, geo, Ms, ):
-        mh = torch.sum(spin*self.anis_axis, axis=0)
+        mh = (spin * self.axis).sum(dim=0)
         E = self.ku * (1 - torch.pow(mh, 2)) * geo
-                    
         return E
     
     def get_params(self,):
         return {'classname': self.__class__.__name__,
-            'ku': self.ku.detach().clone(),
+            'ku': self.ku,
                 'anis_axis': self.axis_tuple}
         
 class CubicAnistropy(MicroField):
-    def __init__(self, shape, dx, kc, axis1, axis2, ):
+    def __init__(self, kc, axis1, axis2, normalize=True):
         super().__init__()
-        self.shape = shape
-        self.dx = dx
-        self.kc = nn.Parameter(init_scalar(kc, self.shape), requires_grad=False)
-        axis3 = tuple(np.cross(np.array(axis1), np.array(axis2)))
+        if normalize:
+            axis1 = normalize_tuple(axis1)
+            axis2 = normalize_tuple(axis2)
         self.axes = [axis1, axis2]
-        self.axis1 = nn.Parameter(init_vector(axis1, self.shape, normalize=True), requires_grad=False)
-        self.axis2 = nn.Parameter(init_vector(axis2, self.shape, normalize=True), requires_grad=False)
-        self.axis3 = nn.Parameter(init_vector(axis3, self.shape, normalize=True), requires_grad=False)
         
-        
+        axis3 = tuple(np.cross(np.array(axis1), np.array(axis2)))
+        self.kc = kc
+        self.register_buffer('axis1', torch.tensor(axis1).view(3, 1, 1, 1))
+        self.register_buffer('axis2', torch.tensor(axis2).view(3, 1, 1, 1))
+        self.register_buffer('axis3', torch.tensor(axis3).view(3, 1, 1, 1))
+         
     def forward(self, spin, geo, Ms, ):
-        m_axis1 = torch.sum(spin*self.axis1, axis=0) ** 4
-        m_axis2 = torch.sum(spin*self.axis2, axis=0) ** 4
-        m_axis3 = torch.sum(spin*self.axis3, axis=0) ** 4
-        E = -1 * self.kc * (m_axis1+m_axis2+m_axis3) * geo
-                    
+        mh1 = (spin * self.axis1).sum(dim=0)
+        mh2 = (spin * self.axis2).sum(dim=0)
+        mh3 = (spin * self.axis3).sum(dim=0)
+        E = -1 * self.kc * (mh1**4 + mh2**4 + mh3**4) * geo    
         return E
     
     def get_params(self,):
         return {'classname': self.__class__.__name__,
-                'kc': self.kc.detach().clone(),
+                'kc': self.kc,
                 'axis1': self.axes[0],
                 'axis2': self.axes[1]}
     
 class Zeeman(MicroField):
-    def __init__(self, shape, dx, H, ):
+    def __init__(self, H):
         super().__init__()
-        self.shape = shape
-        self.dx = dx
         self.H_tuple = H
-        self.H = nn.Parameter(init_vector(H, self.shape), requires_grad=False)
+        self.register_buffer('H', torch.tensor(H).view(3, 1, 1, 1))
         
-
     def forward(self, spin, geo, Ms):   
-        E = -1 * const.mu_0 * Ms * torch.sum(spin*self.H, axis=0)
+        E = -1 * const.mu_0 * Ms * (spin * self.H).sum(dim=0)
         return E
     
     def get_params(self,):

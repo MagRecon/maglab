@@ -1,12 +1,10 @@
-Maglab: Micromagnetics based reconstruction of three-dimensional magnetic structures.
+Maglab: Differentiable vector tomography based on micromagnetic model.
 
 #### Features:
 
-• Leverages differentiable programming for micromagnetic effective field calculation, avoiding manually encoding of mathematical expressions.
+• Combining differentiable magnetic phase simulation with micromagnetic field calculation.
 
-• Differentiable magnetic phase shifts simulation.
-
-• Applying Labonte's steepest descent method on tomography.
+• Employing LaBonte's steepest descent method on vector tomography.
 
 #### Installation:
 

@@ -9,7 +9,7 @@ import maglab
 
 
 import matplotlib.pyplot as plt
-from maglab.utils import show,show_list
+from maglab.display import show,show_list
 import fabio
 
 

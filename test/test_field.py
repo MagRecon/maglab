@@ -40,7 +40,7 @@ class test1(unittest.TestCase):
         return torch.max(x) - torch.min(x)
     
     def compare_energy(self, m0, Ms, e_jumag, field_jumag, pbc=""):
-        micro = self.create_micro(m0, Ms, pbc)
+        micro = self.create_micro(m0, Ms, pbc).cuda()
         field = micro.get_field_list()
         E = micro.get_energy_list()
 
@@ -51,12 +51,12 @@ class test1(unittest.TestCase):
             energy_diff = e_jumag[i,] - energy
             error = self.maxl1(energy_diff) / self.maxl1(e_jumag[i,])
             print(name,"_E:", error)
-            self.assertTrue(error < 1e-5)
+            self.assertTrue(error < 2e-6)
             
             field_diff = micro.geo.cpu() * (field_jumag[i,] - field[i]['value'].detach().cpu().numpy())
             error = self.maxl1(field_diff) / self.maxl1(field_jumag[i,])
             print(name,"_H:", error)
-            self.assertTrue(error < 1e-5)
+            self.assertTrue(error < 2e-6)
         
     def test_cubiod(self):
         # m0 is filled with cubiod geo

@@ -11,7 +11,7 @@ from .alignment import shift_array
 logger = logging.getLogger(__name__)
 
 class PhaseMap(torch.nn.Module):
-    def __init__(self, data, tilt_angle, tilt_axis, mask=None, binary_mask=True, mask_tol=1e-20):
+    def __init__(self, data, alpha=0., beta=0., gamma=0., mask=None, binary_mask=True, mask_tol=1e-20):
         super().__init__()
         self.register_buffer('data', self._tensor(data))
         
@@ -25,16 +25,8 @@ class PhaseMap(torch.nn.Module):
             
         self.register_buffer('mask', mask)
       
-        self.tilt_angle = float(tilt_angle)
-        self.tilt_axis = tilt_axis
+        self.Euler = (alpha, beta, gamma)
     
-    @property
-    def axis(self):
-        return self.tilt_axis
-    
-    @property
-    def angle(self):
-        return self.tilt_angle
     @classmethod
     def _tensor(self, array):
         if isinstance(array, torch.Tensor):
@@ -56,71 +48,64 @@ class PhaseMap(torch.nn.Module):
     def shift(self, shifts):
         data = shift_array(self.data, shifts)
         mask = shift_array(self.mask, shifts)
-        return PhaseMap(data, self.tilt_angle, self.tilt_axis, mask)
+        return PhaseMap(data, *self.Euler, mask)
     
     def zoom(self, nx, ny):
         (x,y) = self.data.shape
         data = zoom(self.data, (nx/x, ny/y), order=2)
         (x,y) = self.mask.shape
         mask = zoom(self.mask, (nx/x, ny/y), order=0)
-        return PhaseMap(data, self.tilt_angle, self.tilt_axis, mask=mask)
+        return PhaseMap(data, *self.Euler, mask=mask)
        
     def remove_background(self, ):
         mask_data = self.data * self.mask
         background = torch.sum(mask_data) / torch.sum(self.mask)
         data = self.data.clone()
-        data[self.mask>0.1] -= background
-        data[self.mask<=0.1] = 0.
-        return PhaseMap(data, self.tilt_angle, self.tilt_axis, mask=self.mask)
+        data[self.mask] -= background
+        data[~self.mask] = 0.
+        return PhaseMap(data, *self.Euler, mask=self.mask)
     
     def add_Gaussian(self, mean=0., sigma=0.05, by='max_diff', seed=None):
         data = add_Gaussian(self.data.cpu().numpy(), mean, sigma, by, seed)
-        return PhaseMap(data, self.tilt_angle, self.tilt_axis, mask=self.mask)
+        return PhaseMap(data, *self.Euler, mask=self.mask)
 
 class PhaseSet(Dataset):
     def __init__(self, dtype=float):
         super().__init__()
         self.dtype = dtype
-        self.list_x = []
-        self.list_y = []
+        self.datalist = []
                       
     def __len__(self):
-        return len(self.list_x) + len(self.list_y)
+        return len(self.datalist)
     
     def __getitem__(self, index,):
-        if index < len(self.list_x):
-            return self.list_x[index]
-        else:
-            return self.list_y[index - len(self.list_x)]
+        return self.datalist[index]
 
     def sort(self,):
-        self.list_x.sort(key=lambda x: x.tilt_angle)
-        self.list_y.sort(key=lambda x: x.tilt_angle)
+        self.datalist.sort(key=lambda x: x.Euler)
            
     def load(self, phasemap, ang_tol=1e-1):
         if not isinstance(phasemap, PhaseMap):
             raise ValueError("PhaseSet.load need a PhaseMap")
-            
-        if phasemap.tilt_axis == 0:
-            self._load_data(self.list_x, phasemap, ang_tol, 0)
-        elif phasemap.tilt_axis == 1:
-            self._load_data(self.list_y, phasemap, ang_tol, 1)
-        else:
-            raise ValueError("Can only load PhaseMap with tilt_axis 0 or 1")
-            
-    def _load_data(self, phase_list, phasemap, ang_tol, tilt_axis):
-        for phi in phase_list:
-            if abs(phi.tilt_angle - phasemap.tilt_angle) < ang_tol:
-                logger.debug("PhaseMap with (Angle {:.2f} and Axis {:d}) already exsit, replacing original data."\
-                    .format(phasemap.tilt_angle, tilt_axis))
-                
-                phase_list.remove(phi)
-                phase_list.append(phasemap)
-                return   
         
-        logger.debug("Loading PhaseMap with (Angle {:.2f} and Axis {:d})"
-              .format(phasemap.tilt_angle, tilt_axis))    
-        phase_list.append(phasemap) 
+        self._load_data(phasemap, ang_tol)
+
+            
+    def _load_data(self, phasemap, ang_tol):
+        for phi in self.datalist:
+            if np.allclose(np.array(phi.Euler), np.array(phasemap.Euler), atol=ang_tol):
+                logger.info("PhaseMap with Euler{} already exsit, replacing original data."\
+                .format(phasemap.Euler))
+            
+                self.datalist.remove(phi)
+                self.datalist.append(phasemap)
+                return 
+        
+        logger.info("Loading PhaseMap with Euler{}."\
+                .format(phasemap.Euler))    
+        self.datalist.append(phasemap)
+        return   
+        
             
     def remove_background(self,):
         newset = PhaseSet()
@@ -136,58 +121,14 @@ class PhaseSet(Dataset):
             newset.load(phase)
         return newset
 
-# fill in the last batch if the sample size can not be divided by batch size
-class MyBatchSampler(Sampler):
-    def __init__(self, n, batch_size):
-        self.n = n
-        self.batch_size = batch_size
-    
-    def _random_choice(self, list_a, num):
-        perm = torch.randperm(len(list_a)).tolist()
-        idx = perm[:num]
-        return [list_a[x] for x in idx]
-        
-    def __iter__(self):
-        indices = torch.randperm(self.n).tolist()
-
-        batches = [indices[i:i + self.batch_size] for i in range(0, len(indices), self.batch_size)]
-        last_batch_size = len(batches[-1]) 
-        if last_batch_size < self.batch_size:
-            remain_size = self.n - last_batch_size
-            remain_indices = indices[:remain_size]
-            additional_indices = self._random_choice(remain_indices, self.batch_size-last_batch_size)  
-            batches[-1].extend(additional_indices)
-
-        return iter(batches)
-
-    def __len__(self):
-        return math.ceil(self.n / self.batch_size)
-       
 class PhaseLoader(DataLoader):
     def __init__(self, *args, **kwargs):
         if 'collate_fn' not in kwargs:
             kwargs['collate_fn'] = self._default_collate_fn
-        
-        if 'batch_size' not in kwargs:
-            kwargs['batch_size'] = 4
-        
-        if 'shuffle' in kwargs:
-            del kwargs['shuffle']   
-            
-        dataset = args[0]
-        n = len(dataset)
-        batch_sampler = MyBatchSampler(n, kwargs['batch_size'])
-        kwargs['batch_sampler'] = batch_sampler
-        del kwargs['batch_size']
         super().__init__(*args, **kwargs)
         
     def _default_collate_fn(self, batch):
-        # data = torch.stack([x.data.unsqueeze(0) for x in batch])
-        # mask = torch.stack([x.mask.unsqueeze(0) for x in batch])
         data = torch.stack([x.data for x in batch])
         mask = torch.stack([x.mask for x in batch])
-        ang = [x.tilt_angle for x in batch]
-        axis = [x.tilt_axis for x in batch]
-        return data,mask,ang,axis
-
-        
+        Eulers = [x.Euler for x in batch]
+        return data,mask,Eulers

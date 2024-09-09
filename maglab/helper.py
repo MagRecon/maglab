@@ -109,32 +109,22 @@ def init_scalar(v, shape):
         
     return v_t
 
-def tuple_to_vector(v:tuple, shape:tuple):
-    dims = len(v)
-    vec = np.zeros((dims, *shape))
-    for i in dims:
-        vec[i,] = v[i]
-    return vec
-    
-def normalize_tensor(v, tol=1e-3):
-    v_copy = v.detach().clone()
-    n2 = torch.sum(v_copy**2, dim=0)
-    n = torch.sqrt(n2)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        v_new = v_copy / n
-    v_new[:, n<tol] = 0.
-        
-    return v_new 
-        
 
-def init_vector(v, shape, normalize=False):
-    # shape = (dim, nx, ny, nz)
-    if isinstance(v, tuple):
+def normalize_tuple(v):
+    v = np.array(list(v))
+    n = np.sqrt(np.sum(v**2, axis=0))
+    v = tuple([x/n for x in v])
+    return v
+
+def init_vector(v, shape, normalize=False, atol=1e-5):
+    if isinstance(v, numbers.Number):
+        v_t = v * torch.zeros((3, *shape))
+        
+    elif isinstance(v, tuple):
         dims = len(v)
         v_t = torch.zeros((dims, *shape))
         for i in range(dims):
-            v_t[i,] = init_scalar(v[i], shape)
+            v_t[i,] = v[i]
 
     elif isinstance(v, (np.ndarray, torch.Tensor)):
         assert v.shape[1:] == shape, "Shape not match! Expect {}, got {} instead.".format(shape, v.shape)
@@ -143,9 +133,11 @@ def init_vector(v, shape, normalize=False):
     else:
         raise ValueError("Function `init_vector` only accept one of (tuple, np.ndarray, torch.Tensor), got `{}` instead"
                             .format(v.__class__.__name__))
-        
+    
     if normalize:
-        v_t = normalize_tensor(v_t)
+        norm = torch.sqrt(torch.sum(v_t**2, dim=0))
+        geo = norm > atol
+        v_t[:, geo] = v_t[:, geo] / norm[geo]
         
     return v_t
 
@@ -224,3 +216,54 @@ def cross_correlation(x, y):
 def coords(nx):
     return np.linspace(-nx/2, nx/2, nx, endpoint=True)
 
+def Euler_x(alpha):
+    st, ct = np.sin(alpha), np.cos(alpha)
+    return torch.tensor([[1, 0, 0],
+                       [0, ct, -1*st],
+                       [0, st, ct]])
+    
+def Euler_y(beta):
+    st, ct = np.sin(beta), np.cos(beta)
+    return torch.tensor([[ct, 0, st],
+                       [0, 1, 0],
+                       [-1*st, 0, ct]])
+
+def Euler_z(gamma):
+    st, ct = np.sin(gamma), np.cos(gamma)
+    return torch.tensor([[ct, -1*st, 0],
+                       [st, ct, 0],
+                       [0, 0, 1]])
+    
+def Euler_XYZ(alpha, beta, gamma):
+    return Euler_z(gamma) @ Euler_y(beta) @ Euler_x(alpha)
+
+
+def generate_circular_mask(nx,ny, radius):
+    x = np.linspace(-nx/2, nx/2, nx, endpoint=True)
+    y = np.linspace(-ny/2, ny/2, ny, endpoint=True)
+    X,Y = np.meshgrid(x,y,indexing='ij')
+    R2 = X**2 + Y**2
+    mask = np.zeros((nx,ny))
+    mask[R2 <= radius**2] =1
+    return mask
+
+def get_meshgrid_3d(nx,ny,nz,dx=1,dy=1,dz=1):
+    x = np.linspace(-nx/2, nx/2, nx, endpoint=True)*dx
+    y = np.linspace(-ny/2, ny/2, ny, endpoint=True)*dy
+    z = np.linspace(-nz/2, nz/2, nz, endpoint=True)*dz
+    return np.meshgrid(x, y, z, indexing='ij')
+
+def estimate_Ms(phase, layer, dx, percentile=100):
+    B = get_induction(phase, dx)
+    Bxy = np.sqrt(B[0,]**2+B[1,]**2)
+    vB = np.percentile(Bxy, percentile) / (layer*dx)
+    vM = vB / const.mu_0
+    return vM
+
+def estimate_m0(phase, layer, dx):
+    Ms = estimate_Ms(phase, layer, dx)
+    B = get_induction(phase, dx)
+    M0 = B / (layer*Ms)
+    M = np.repeat(M0[:, :, :, np.newaxis], layer, axis=3)
+    M = np.pad(M, ((0, 1), (0, 0), (0, 0), (0,0)), mode='constant', constant_values=0.)
+    return M

@@ -30,7 +30,6 @@ class TestMicro(unittest.TestCase):
     def test_init_m0(self):
         micro = self.create_micro()
         micro.init_m0((0,0,1.))
-        micro.init_m0(torch.zeros((2,*micro.shape)))
         micro.init_m0(torch.zeros((3,*micro.shape)))
         
     def test_get_spin(self):
@@ -44,17 +43,14 @@ class TestMicro(unittest.TestCase):
         m = maglab.helper.Spherical2Cartesian(sp)
         micro.init_m0(m)
         m0 = micro.get_spin()
-        micro.init_m0(sp)
-        m1 = micro.get_spin()
-        self.assertTrue(torch.allclose(m0, m1, rtol=1e-7))
         
     def test_set_requires_grad(self):
         micro = self.create_micro()
         micro.set_requires_grad(False)
-        self.assertTrue(not micro.spherical.requires_grad)
+        self.assertTrue(not micro.spin.requires_grad)
         
         micro.set_requires_grad(True)
-        self.assertTrue(micro.spherical.requires_grad)
+        self.assertTrue(micro.spin.requires_grad)
         
     def maxl1(self, x):
         return torch.max(torch.abs(x)).item()
@@ -80,6 +76,7 @@ class TestMicro(unittest.TestCase):
             diff_e = old_E[i]['value']-new_E[i]['value']
             print(name, self.maxl1(old_E[i]['value']))
             error = self.maxl1(diff_e) / self.maxl1(old_E[i]['value'])
+            print(error)
             self.assertTrue(error < 1e-5)
             
             diff_h = old_H[i]['value']-new_H[i]['value']

@@ -19,7 +19,7 @@ from . import saver
 from . import microfields
 from . import demag
 
-from .utils import *
+from .display import *
 from .phasemapper import *
 from .micro import *
 from .ltem import *
@@ -29,7 +29,7 @@ from .sd import *
 
 
 __all__ = []
-__all__.extend(utils.__all__)
+__all__.extend(display.__all__)
 __all__.extend(phasemapper.__all__)
 __all__.extend(micro.__all__)
 __all__.extend(ltem.__all__)
