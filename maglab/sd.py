@@ -1,3 +1,5 @@
+# Ref: Exl L, et al. Journal of Applied Physics, 2014, 115(17).
+
 import torch
 import torch.nn as nn
 

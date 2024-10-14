@@ -11,7 +11,7 @@ __all__ = ['Exch', 'DMI', 'Zeeman', 'Anistropy', 'InterfacialDMI', 'MicroField']
 
 class MicroField(nn.Module): 
     def forward(self):
-        pass
+        raise NotImplementedError
     
     def _init_pbc(self, pbc:str):
         # if pbc, use roll without padding
@@ -25,10 +25,10 @@ class MicroField(nn.Module):
 class Exch(MicroField):
     def __init__(self, shape, dx, A, pbc:str,):
         """
-        Initializes a new instance of the class.
+        Heisenberg exchange energy.
 
         Args:
-            shape (tuple): The shape of the tensor.
+            shape (tuple): The geometry of the simulated system.
             dx (float): The spacing between adjacent elements in the tensor.
             A (float or Tensor): The exchange constant. If a float, it is broadcasted to the shape of the tensor.
             pbc (str): A string specifying the periodic boundary conditions.
