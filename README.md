@@ -1,10 +1,14 @@
 Maglab: Differentiable vector tomography based on micromagnetic model.
 
-#### Features:
+#### Reference:
 
-• Combining differentiable magnetic phase simulation with micromagnetic field calculation.
+Boyao Lyu, Shihua Zhao, Yibo Zhang, Weiwei Wang, Fengshan Zheng, Rafal E. Dunin-Borkowski, Jiadong Zang, Haifeng Du. (2024). *Three-dimensional magnetization reconstruction from electron optical phase images with physical constraints*. Science China-Physics Mechanics & Astronomy, 67(11), 117511. 
 
-• Employing LaBonte's steepest descent method on vector tomography.
+#### Update:
+
+We have now determined that the Jacobian of the energy functional for the discretized spin array is equivalent to the effective field in micromagnetics. Consequently, the Adam optimizer used in our paper has now been replaced by a classic Barzilai-Borwein method, leading to faster convergence and eliminating the need for gradient propagation towards spherical coordinates.
+
+For more details and usage of the driver, please refer to `maglab/sd.py` and `examples/target_skyrmion/main.ipynb`.
 
 #### Installation:
 

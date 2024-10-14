@@ -10,6 +10,9 @@ __all__ = ['LTEM']
 class LTEM(torch.nn.Module):
     """
     This is a PyTorch-based reimplementation of the 'Microscope' class from PyLorentz.
+    
+    Warning: The accuracy of this class is not guaranteed because we didn't find any 
+            standard test for LTEM simulation :)
 
     Args:
         fov (nx,ny): Shape of intensity map.
